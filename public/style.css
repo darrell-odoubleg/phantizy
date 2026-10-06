@@ -13,6 +13,7 @@
   --slate:#45618C;
 }
 *{box-sizing:border-box;}
+[hidden]{display:none !important;}
 html{-webkit-text-size-adjust:100%;}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
 a{color:var(--accent);}

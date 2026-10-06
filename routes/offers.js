@@ -78,16 +78,17 @@ function loadOffer(req, res, next) {
 // ---- offers ----
 
 router.get('/offers', (req, res) => {
-  const { status, q } = req.query;
+  const { status, q, festival } = req.query;
   const where = [];
   const params = {};
   if (status && STATUSES.includes(status)) { where.push('o.status = @status'); params.status = status; }
+  if (festival) { where.push('o.festival_name = @festival'); params.festival = festival; }
   if (q) {
-    where.push("(o.artist_name LIKE @q OR o.venue_name LIKE @q OR o.event_name LIKE @q OR o.venue_city LIKE @q OR o.agency LIKE @q)");
+    where.push("(o.artist_name LIKE @q OR o.festival_name LIKE @q OR o.venue_name LIKE @q OR o.stage LIKE @q OR o.venue_city LIKE @q OR o.agency LIKE @q)");
     params.q = `%${q}%`;
   }
   const rows = db.prepare(`
-    SELECT o.id, o.status, o.artist_name, o.event_name, o.event_date, o.venue_name, o.venue_city, o.venue_state,
+    SELECT o.id, o.status, o.artist_name, o.festival_name, o.festival_dates, o.stage, o.billing, o.show_time, o.event_date, o.venue_name, o.venue_city, o.venue_state,
            o.guarantee, o.deal_type, o.agency, o.created_by_name, o.updated_at,
            (SELECT COUNT(*) FROM checklist_items c WHERE c.offer_id = o.id) AS checklist_total,
            (SELECT COUNT(*) FROM checklist_items c WHERE c.offer_id = o.id AND c.done = 1) AS checklist_done,
@@ -95,8 +96,13 @@ router.get('/offers', (req, res) => {
            (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind IN ('rider_technical','rider_hospitality','stage_plot')) AS rider_count
     FROM offers o
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-    ORDER BY (o.event_date IS NULL), o.event_date, o.id DESC`).all(params);
+    ORDER BY (o.event_date IS NULL), o.event_date, o.show_time, o.id DESC`).all(params);
   res.json(rows);
+});
+
+router.get('/festivals', (req, res) => {
+  res.json(db.prepare(`SELECT festival_name AS name, COUNT(*) AS offers, MIN(event_date) AS first_date
+    FROM offers WHERE festival_name IS NOT NULL GROUP BY festival_name ORDER BY (first_date IS NULL), first_date, name`).all());
 });
 
 function createOffer(values, user) {
@@ -105,8 +111,8 @@ function createOffer(values, user) {
     const offerId = info.lastInsertRowid;
     updateRow('offers', 'id', offerId, values);
     // Advance sheet starts with what the offer already knows.
-    db.prepare('INSERT INTO advances (offer_id, doors_time, ground_transport) VALUES (?, ?, ?)')
-      .run(offerId, values.doors_time || null, values.ground_transport || null);
+    db.prepare('INSERT INTO advances (offer_id, headliner_set_time, ground_transport) VALUES (?, ?, ?)')
+      .run(offerId, values.show_time || null, values.ground_transport || null);
     const ins = db.prepare('INSERT INTO checklist_items (offer_id, label, auto_key, position) VALUES (?, ?, ?, ?)');
     db.prepare('SELECT label, auto_key, position FROM checklist_template ORDER BY position, id').all()
       .forEach(t => ins.run(offerId, t.label, t.auto_key, t.position));
@@ -116,6 +122,7 @@ function createOffer(values, user) {
 
 router.post('/offers', (req, res) => {
   const values = pick(req.body || {}, OFFER_FIELDS);
+  if (!values.festival_name) return res.status(400).json({ error: 'Festival is required' });
   if (!values.artist_name) return res.status(400).json({ error: 'Artist is required' });
   res.json({ id: createOffer(values, req.user) });
 });
@@ -133,6 +140,7 @@ router.get('/offers/:id', loadOffer, (req, res) => {
 router.put('/offers/:id', loadOffer, (req, res) => {
   const values = pick(req.body || {}, OFFER_FIELDS);
   if ('artist_name' in values && !values.artist_name) return res.status(400).json({ error: 'Artist is required' });
+  if ('festival_name' in values && !values.festival_name) return res.status(400).json({ error: 'Festival is required' });
   updateRow('offers', 'id', req.offer.id, values);
   res.json({ ok: true });
 });
@@ -146,14 +154,6 @@ router.patch('/offers/:id/status', loadOffer, (req, res) => {
   if (status === 'accepted') { autoCheck(id, 'status_sent', req.user.name); autoCheck(id, 'status_accepted', req.user.name); }
   if (status === 'completed') autoCheck(id, 'status_completed', req.user.name);
   res.json({ ok: true });
-});
-
-// Copies the deal terms into a new draft with a fresh advance + checklist.
-router.post('/offers/:id/duplicate', loadOffer, (req, res) => {
-  const values = {};
-  for (const f of OFFER_FIELDS) values[f.key] = req.offer[f.key];
-  values.event_date = null; values.alt_dates = null; values.offer_expires = null;
-  res.json({ id: createOffer(values, req.user) });
 });
 
 router.delete('/offers/:id', requireAdmin, loadOffer, (req, res) => {
@@ -178,7 +178,7 @@ function sendPdf(res, filename, build) {
   build(res);
 }
 function pdfName(offer, kind) {
-  return `${kind} - ${offer.artist_name || 'Offer'}${offer.event_date ? ' - ' + offer.event_date : ''}.pdf`;
+  return `${kind} - ${offer.artist_name || 'Offer'}${offer.festival_name ? ' - ' + offer.festival_name : ''}.pdf`;
 }
 
 router.get('/offers/:id/offer-sheet.pdf', loadOffer, (req, res) => {

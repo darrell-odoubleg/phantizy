@@ -10,19 +10,20 @@
 <body>
 <div class="wrap">
   <div class="head-row">
-    <div><h1>Offers</h1><p class="subtitle">Every offer, its paperwork, and where the checklist stands.</p></div>
+    <div><h1>Festival offers</h1><p class="subtitle">One offer per artist. Filter by festival to see a whole lineup.</p></div>
     <a class="btn" href="/offer.html">+ New offer</a>
   </div>
 
   <div class="card">
     <div class="toolbar">
-      <input type="search" id="q" placeholder="Search artist, venue, city, agency…">
+      <select id="festival" style="margin:0;width:auto;max-width:280px"><option value="">All festivals</option></select>
+      <input type="search" id="q" placeholder="Search artist, festival, stage, agency…">
     </div>
     <div class="filters" id="filters"></div>
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Date</th><th>Artist</th><th class="hide-sm">Venue</th><th class="hide-sm">Guarantee</th>
+          <th>Date</th><th>Artist</th><th class="hide-sm">Festival</th><th class="hide-sm">Guarantee</th>
           <th>Status</th><th class="hide-sm">Docs</th><th>Checklist</th>
         </tr></thead>
         <tbody id="rows"></tbody>
@@ -35,7 +36,8 @@
 <script src="/app.js"></script>
 <script>
 const FILTERS = [['', 'All'], ['draft', 'Draft'], ['sent', 'Sent'], ['accepted', 'Accepted'], ['completed', 'Completed'], ['declined', 'Declined'], ['cancelled', 'Cancelled']];
-let status = sessionStorage.getItem('pf_status') || '';
+let status = '', festival = '';
+try { status = sessionStorage.getItem('pf_status') || ''; festival = sessionStorage.getItem('pf_festival') || ''; } catch {}
 let timer;
 
 function renderFilters() {
@@ -54,28 +56,46 @@ async function load() {
   const q = document.getElementById('q').value.trim();
   const params = new URLSearchParams();
   if (status) params.set('status', status);
+  if (festival) params.set('festival', festival);
   if (q) params.set('q', q);
   const rows = await api('/offers?' + params);
-  document.getElementById('empty').hidden = rows.length > 0 || q || status;
+  document.getElementById('empty').hidden = rows.length > 0 || q || status || festival;
   document.getElementById('rows').innerHTML = rows.length ? rows.map(r => {
     const pct = r.checklist_total ? Math.round(100 * r.checklist_done / r.checklist_total) : 0;
     return `<tr class="click" data-id="${r.id}">
       <td>${esc(fmtDate(r.event_date)) || '<span style="color:var(--dim)">TBD</span>'}</td>
-      <td><strong>${esc(r.artist_name)}</strong>${r.event_name ? `<div style="font-size:12px;color:var(--dim)">${esc(r.event_name)}</div>` : ''}</td>
-      <td class="hide-sm">${esc(r.venue_name || '')}${r.venue_city ? `<div style="font-size:12px;color:var(--dim)">${esc([r.venue_city, r.venue_state].filter(Boolean).join(', '))}</div>` : ''}</td>
+      <td><strong>${esc(r.artist_name)}</strong>${slotLine(r) ? `<div style="font-size:12px;color:var(--dim)">${esc(slotLine(r))}</div>` : ''}</td>
+      <td class="hide-sm">${esc(r.festival_name || '')}${r.venue_name || r.venue_city ? `<div style="font-size:12px;color:var(--dim)">${esc([r.venue_name, [r.venue_city, r.venue_state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>` : ''}</td>
       <td class="hide-sm">${esc(money(r.guarantee))}</td>
       <td>${badge(r.status)}</td>
       <td class="hide-sm"><span class="pill ${r.contract_count ? '' : 'off'}" title="Contracts">Contract</span><span class="pill ${r.rider_count ? '' : 'off'}" title="Riders">Rider</span></td>
       <td><div class="progress"><div class="bar"><span style="width:${pct}%"></span></div>${r.checklist_done}/${r.checklist_total}</div></td>
     </tr>`;
-  }).join('') : (q || status ? '<tr><td colspan="7" class="empty">No offers match.</td></tr>' : '');
+  }).join('') : (q || status || festival ? '<tr><td colspan="7" class="empty">No offers match.</td></tr>' : '');
 }
 document.getElementById('rows').onclick = (e) => {
   const tr = e.target.closest('tr[data-id]');
   if (tr) location.href = '/offer.html?id=' + tr.dataset.id;
 };
 
-initNav('offers').then(() => { renderFilters(); load(); });
+function slotLine(r) {
+  const t = r.show_time ? new Date('2000-01-01T' + r.show_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+  return [r.stage, t, r.billing].filter(Boolean).join(' · ');
+}
+
+async function loadFestivals() {
+  const list = await api('/festivals');
+  if (festival && !list.some(f => f.name === festival)) festival = '';
+  document.getElementById('festival').innerHTML = '<option value="">All festivals</option>' +
+    list.map(f => `<option value="${esc(f.name)}"${f.name === festival ? ' selected' : ''}>${esc(f.name)} (${f.offers})</option>`).join('');
+}
+document.getElementById('festival').onchange = (e) => {
+  festival = e.target.value;
+  try { sessionStorage.setItem('pf_festival', festival); } catch {}
+  load();
+};
+
+initNav('offers').then(async () => { renderFilters(); await loadFestivals(); load(); });
 </script>
 </body>
 </html>

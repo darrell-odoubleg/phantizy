@@ -82,7 +82,8 @@ function fieldHtml(f, value) {
   } else {
     const type = f.type === 'money' ? 'number' : (f.type || 'text');
     const extra = f.type === 'money' ? ' step="0.01" min="0" inputmode="decimal"' : f.type === 'number' ? ' step="any"' : '';
-    input = `<input type="${type}" id="${id}" name="${f.key}" value="${esc(v)}"${extra}${f.required ? ' required' : ''}>`;
+    const ph = f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : '';
+    input = `<input type="${type}" id="${id}" name="${f.key}" value="${esc(v)}"${extra}${ph}${f.required ? ' required' : ''}>`;
   }
   return `<div class="${cls}">${lbl}${input}</div>`;
 }

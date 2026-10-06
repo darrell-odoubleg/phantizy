@@ -66,9 +66,12 @@ function header(doc, title, offer) {
   y += 70;
   doc.font('Helvetica-Bold').fontSize(22).fillColor(INK).text(title, left, y);
   y = doc.y + 2;
-  const sub = [offer.artist_name, offer.event_date && fmtDate(offer.event_date)].filter(Boolean).join('  ·  ');
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(INK).text(offer.artist_name || '', left, y);
+  const fest = [offer.festival_name, offer.festival_dates].filter(Boolean).join(' · ');
+  if (fest) doc.font('Helvetica').fontSize(11).fillColor(INK).text(fest);
+  const slot = [offer.event_date && fmtDate(offer.event_date), offer.stage, offer.show_time && fmtTime(offer.show_time)].filter(Boolean).join('  ·  ');
+  if (slot) doc.fontSize(10).fillColor(INK).text(slot);
   const place = [offer.venue_name, [offer.venue_city, offer.venue_state].filter(Boolean).join(', ')].filter(Boolean).join(' — ');
-  doc.font('Helvetica').fontSize(11.5).fillColor(INK).text(sub, left, y);
   if (place) doc.fontSize(10).fillColor(DIM).text(place);
   y = doc.y + 10;
   doc.moveTo(left, y).lineTo(left + width, y).lineWidth(2).strokeColor(ACCENT).stroke();
@@ -135,7 +138,7 @@ function footer(doc, label) {
 
 function offerSheetPdf(offer, out) {
   const doc = newDoc(out);
-  header(doc, 'OFFER', offer);
+  header(doc, 'FESTIVAL OFFER', offer);
   for (const s of OFFER_SECTIONS) section(doc, s.title, s.fields, offer);
 
   // Acceptance block
@@ -166,15 +169,15 @@ function advanceSheetPdf(offer, advance, out) {
   header(doc, 'ADVANCE SHEET', offer);
   // Quick reference from the offer, then the advance itself.
   const ref = [
-    { key: 'venue_address', label: 'Venue address', wide: true },
-    { key: 'billing', label: 'Billing' },
-    { key: 'support_acts', label: 'Support' },
-    { key: 'show_time', label: 'Show time', type: 'time' },
+    { key: 'venue_address', label: 'Site address', wide: true },
+    { key: 'billing', label: 'Lineup position' },
     { key: 'set_length', label: 'Set length' },
-    { key: 'capacity', label: 'Capacity' },
-    { key: 'ages', label: 'Ages' },
+    { key: 'changeover', label: 'Changeover' },
+    { key: 'credentials', label: 'Credentials / wristbands' },
+    { key: 'guest_list_offer', label: 'Guest list allotment' },
+    { key: 'artist_parking', label: 'Artist parking' },
   ];
-  section(doc, 'Show', ref, offer);
+  section(doc, 'Performance', ref, offer);
   for (const s of ADVANCE_SECTIONS) section(doc, s.title, s.fields, advance);
   footer(doc, `Advance · Offer #${offer.id}`);
   doc.end();
