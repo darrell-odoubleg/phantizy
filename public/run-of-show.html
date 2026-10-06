@@ -105,7 +105,7 @@ function render() {
       ${t.rows.length ? `<div class="table-wrap"><table class="ros-view">
         <thead><tr><th>Item</th><th>Stage Setup</th><th>Performance Time</th><th>Duration</th></tr></thead>
         <tbody>${t.rows.map(r => `<tr class="${r.co ? 'co-row' : r.offer_id ? 'act-row' : r.fixed ? 'fixed-row' : ''}">
-          <td>${r.offer_id ? `<a href="/offer.html?id=${r.offer_id}#advance">${esc(r.item)}</a>` : esc(r.item)}</td>
+          <td>${r.offer_id || r.li ? `<a href="/offer.html?id=${r.offer_id || r.li}#advance">${esc(r.item)}</a>` : esc(r.item)}</td>
           <td>${esc(r.setup)}</td><td class="nowrap">${esc(perfTime(r))}</td><td class="nowrap">${esc(r.duration)}</td></tr>`).join('')}</tbody>
       </table></div>` : `<div class="empty">No rows yet. Acts appear here once their offers are accepted with this stage and date.</div>`}
       ${file ? `<div class="ros-file">Uploaded file: ${/^(application\/pdf|image\/(png|jpeg))$/.test(file.mime_type) ? `<a target="_blank" href="/api/festival-files/${file.id}/download?view=1">${esc(file.original_name)}</a>` : esc(file.original_name)}
@@ -149,6 +149,14 @@ function renderRosRows() {
       return `<tr data-i="${i}" class="fixed-row">
         <td><strong>${esc(r.item)}</strong> <span class="pill" title="Added to every stage and day">every day</span></td>
         <td></td><td>${esc(fmtT(r.time))}</td><td>${esc(fmtT(r.end))}</td><td>${esc(r.duration)}</td><td></td>
+      </tr>`;
+    }
+    if (r.li) {
+      return `<tr data-i="${i}" class="artist-row">
+        <td>${esc(r.item)} <span class="pill" title="Load in / stage arrival from the advance sheet">from advance</span></td>
+        <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="e.g. Backline to stage"></td>
+        <td>${esc(fmtT(r.time))}</td><td></td><td></td>
+        <td><a class="meta" href="/offer.html?id=${r.li}#advance" target="_blank" title="Change the load in time on the advance sheet">edit time</a></td>
       </tr>`;
     }
     if (r.offer_id || r.co) {

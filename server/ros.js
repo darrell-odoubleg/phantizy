@@ -6,7 +6,9 @@
 // text for artist rows (matched by offer_id) and any manual rows (gates,
 // curfew, meet & greets). A Changeover row is added automatically between
 // each pair of consecutive acts (previous set end → next set start); its
-// Stage Setup is stored by the following act's offer_id ({ co: id }).
+// Stage Setup is stored by the following act's offer_id ({ co: id }). Each
+// act with a Load in time on its advance sheet also gets a "<Act> Load In"
+// row; its Stage Setup is stored as { li: id }.
 // Festival-wide fixed rows (catering) are added to every stage and day,
 // shown in red and never stored. Everything is sorted by start time.
 
@@ -65,20 +67,24 @@ function runOfShowRows(festivalName, stage, day) {
     ? parseRows((db.prepare('SELECT rows FROM festival_ros WHERE festival_id = ? AND stage = ? AND day = ?').get(fest.id, stage, day) || {}).rows)
     : [];
   const offers = db.prepare(`SELECT o.id, o.status, o.artist_name, o.stage, o.show_time, o.set_length,
-      a.headliner_set_time, a.set_end_time
+      a.headliner_set_time, a.set_end_time, a.load_in_time
     FROM offers o LEFT JOIN advances a ON a.offer_id = o.id
     WHERE o.festival_name = ? AND o.event_date = ? AND o.status NOT IN ('declined', 'cancelled')`).all(festivalName, day)
     .filter(o => norm(o.stage) === norm(stage));
 
   const setupFor = new Map(stored.filter(r => r.offer_id).map(r => [Number(r.offer_id), r.setup || '']));
   const coSetupFor = new Map(stored.filter(r => r.co).map(r => [Number(r.co), r.setup || '']));
+  const liSetupFor = new Map(stored.filter(r => r.li).map(r => [Number(r.li), r.setup || '']));
   const artistRows = offers.filter(o => RESTRICTED_STATUSES.includes(o.status)).map(o => {
     const start = o.headliner_set_time || o.show_time || '';
     let end = o.set_end_time || '';
     if (!end && toMin(start) !== null && setLengthMinutes(o.set_length)) end = fromMin(toMin(start) + setLengthMinutes(o.set_length));
     return { offer_id: o.id, item: o.artist_name || '', setup: setupFor.get(o.id) || '', time: start, end, duration: durationText(start, end) };
   });
-  const manualRows = stored.filter(r => !r.offer_id && !r.co).map(r => ({
+  const loadIns = offers.filter(o => RESTRICTED_STATUSES.includes(o.status) && toMin(o.load_in_time) !== null).map(o => ({
+    li: o.id, item: `${o.artist_name || 'Artist'} Load In`, setup: liSetupFor.get(o.id) || '', time: o.load_in_time, end: '', duration: '',
+  }));
+  const manualRows = stored.filter(r => !r.offer_id && !r.co && !r.li).map(r => ({
     item: r.item || '', setup: r.setup || '', time: r.time || '', end: r.end || '',
     duration: r.duration || durationText(r.time, r.end),
   }));
@@ -100,7 +106,7 @@ function runOfShowRows(festivalName, stage, day) {
   }
   // Sort by start time (a changeover sorts after a row starting at the same
   // minute); rows without a time keep their order at the end.
-  const all = [...artistRows, ...manualRows, ...changeovers, ...fixedRows].map((r, i) => ({ r, i, t: toMin(r.time), co: r.co ? 1 : 0 }));
+  const all = [...artistRows, ...loadIns, ...manualRows, ...changeovers, ...fixedRows].map((r, i) => ({ r, i, t: toMin(r.time), co: r.co ? 1 : 0 }));
   all.sort((a, b) => (a.t ?? 1e9) - (b.t ?? 1e9) || a.co - b.co || a.i - b.i);
   return { rows: all.map(x => x.r), pending: offers.filter(o => !RESTRICTED_STATUSES.includes(o.status)).length, overlaps };
 }
