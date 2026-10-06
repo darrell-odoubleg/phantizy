@@ -5,7 +5,11 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db/init');
 const { requireAdmin, hashPassword } = require('../server/auth');
-const { OFFER_SECTIONS, ROLES } = require('../public/fields');
+const fs = require('fs');
+const path = require('path');
+const { OFFER_SECTIONS, ROLES, WELCOME_FILE_KINDS } = require('../public/fields');
+const { makeUpload, sendStoredFile, UPLOAD_DIR } = require('../server/upload');
+const festivalUpload = makeUpload(req => path.join('festivals', String(Number(req.params.id))));
 const cleanRole = (r) => (ROLES[r] ? r : 'staff');
 
 // Offer fields a festival can supply defaults for (its festivalWide sections).
@@ -136,6 +140,44 @@ router.patch('/festival-options/:id', requireAdmin, (req, res) => {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'Another festival already has that name' });
     throw err;
   }
+  res.json({ ok: true });
+});
+
+// ---- festival welcome-package files (same for every act) ----
+
+const festivalFilePath = (f) => path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name));
+
+router.get('/festival-options/:id/files', requireAdmin, (req, res) => {
+  res.json(db.prepare(`SELECT id, kind, original_name, mime_type, size, uploaded_by_name, uploaded_at
+    FROM festival_files WHERE festival_id = ? ORDER BY uploaded_at`).all(Number(req.params.id)));
+});
+
+router.post('/festival-options/:id/files', requireAdmin, (req, res, next) => {
+  if (!db.prepare('SELECT 1 FROM festivals WHERE id = ?').get(Number(req.params.id))) return res.status(404).json({ error: 'Festival not found' });
+  next();
+}, festivalUpload.array('files', 10), (req, res) => {
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'Choose a file to upload' });
+  const kind = WELCOME_FILE_KINDS[req.body.kind] ? req.body.kind : 'other';
+  const ins = db.prepare(`INSERT INTO festival_files (festival_id, kind, original_name, stored_name, mime_type, size, uploaded_by_name)
+                          VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  db.transaction(() => files.forEach(f => ins.run(Number(req.params.id), kind, f.originalname, f.filename, f.mimetype, f.size, req.user.name)))();
+  res.json({ ok: true, count: files.length });
+});
+
+// Admin, staff and production (who send welcome packages) can open these.
+router.get('/festival-files/:fid/download', (req, res) => {
+  if (req.user.role === 'accounting') return res.status(404).json({ error: 'File not found' });
+  const f = db.prepare('SELECT * FROM festival_files WHERE id = ?').get(Number(req.params.fid));
+  if (!f) return res.status(404).json({ error: 'File not found' });
+  sendStoredFile(req, res, festivalFilePath(f), f.mime_type, f.original_name);
+});
+
+router.delete('/festival-files/:fid', requireAdmin, (req, res) => {
+  const f = db.prepare('SELECT * FROM festival_files WHERE id = ?').get(Number(req.params.fid));
+  if (!f) return res.status(404).json({ error: 'File not found' });
+  db.prepare('DELETE FROM festival_files WHERE id = ?').run(f.id);
+  fs.rmSync(festivalFilePath(f), { force: true });
   res.json({ ok: true });
 });
 

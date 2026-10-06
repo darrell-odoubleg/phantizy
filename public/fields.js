@@ -171,7 +171,7 @@
   const ROLES = { admin: 'Admin', staff: 'Staff', production: 'Production', accounting: 'Accounting' };
   const RESTRICTED_STATUSES = ['accepted', 'completed'];
   const ROLE_DOC_KINDS = {
-    production: ['rider_technical', 'rider_hospitality', 'stage_plot'],
+    production: ['rider_technical', 'rider_hospitality', 'stage_plot', 'run_of_show'],
     accounting: ['contract', 'fec', 'w9', 'coi'],
   };
 
@@ -182,13 +182,26 @@
     rider_technical: 'Technical rider',
     rider_hospitality: 'Hospitality rider',
     stage_plot: 'Stage plot / input list',
+    run_of_show: 'Run of show',
     w9: 'W-9',
+    other: 'Other',
+  };
+
+  // Files attached to every welcome package for a festival (Settings →
+  // Festivals → Details & welcome). The per-show Run of show is a DOC_KIND.
+  const WELCOME_FILE_KINDS = {
+    audio_specs: 'Audio specs',
+    lighting_specs: 'Lighting specs',
+    lighting_plot: 'Lighting plot',
+    directions: 'Directions',
+    grounds_map: 'Festival grounds map',
     other: 'Other',
   };
 
   const flat = (sections) => sections.flatMap(s => s.fields);
   const api = {
     OFFER_SECTIONS, ADVANCE_SECTIONS, PAYMENT_SECTIONS, STATUSES, DOC_KINDS, ROLES, RESTRICTED_STATUSES, ROLE_DOC_KINDS,
+    WELCOME_FILE_KINDS,
     OFFER_FIELDS: flat(OFFER_SECTIONS),
     ADVANCE_FIELDS: flat(ADVANCE_SECTIONS),
     PAYMENT_FIELDS: flat(PAYMENT_SECTIONS),

@@ -98,7 +98,7 @@
   <form method="dialog" id="welcomeSendForm" novalidate>
     <div class="mbody">
       <h2>Email welcome package</h2>
-      <p class="subtitle" style="margin-bottom:14px">Sends the welcome letter as a PDF attachment<span id="wFrom"></span>.</p>
+      <p class="subtitle" style="margin-bottom:14px">Sends the welcome letter and the files below<span id="wFrom"></span>.</p>
       <div class="note-box warn" id="wNotConfigured" hidden>Email isn't set up on the server yet, so this can't be sent. Download the <a id="wPdfLink" target="_blank">welcome letter PDF</a> and attach it to your own email for now.</div>
       <div class="note-box" id="wNoText" hidden>This festival has no welcome package text yet, so the letter will only have the show details. An admin can add it in Settings → Festivals → Details &amp; welcome.</div>
       <label for="wTo">To (tour manager)</label>
@@ -109,6 +109,8 @@
       <input type="text" id="wSubject">
       <label for="wMessage">Message</label>
       <textarea id="wMessage" rows="10"></textarea>
+      <label>Attachments</label>
+      <div id="wAtts" class="att-list"></div>
       <label class="check-inline"><input type="checkbox" id="wAttachAdvance"> Also attach the advance sheet PDF</label>
     </div>
     <div class="mfoot">
@@ -271,10 +273,29 @@ $('#welcomeBtn').onclick = async () => {
     $('#wNoText').hidden = w.hasFestivalText;
     $('#wPdfLink').href = `/api/offers/${id}/welcome.pdf`;
     $('#wSend').disabled = !w.configured;
+    WATTS = w.attachments || [];
+    renderAtts();
     $('#welcomeDlg').showModal();
     (w.to ? $('#wMessage') : $('#wTo')).focus();
   } catch (e) { toast(e.message, true); }
 };
+let WATTS = [];
+function renderAtts() {
+  const hasRos = WATTS.some(a => a.kind === 'run_of_show');
+  $('#wAtts').innerHTML = `<div class="att-row"><input type="checkbox" checked disabled> <span class="pill">Letter</span> Welcome letter (PDF)</div>`
+    + WATTS.map(a => `<label class="att-row"><input type="checkbox" data-att="${a.source}:${a.id}" data-size="${a.size || 0}" checked>
+        <span class="pill">${esc(a.label)}</span> ${esc(a.name)} <span class="meta">${fmtSize(a.size || 0)}</span></label>`).join('')
+    + (hasRos ? '' : `<div class="att-hint">No run of show uploaded for this show yet. Upload one on the ${ROLE === 'production' ? 'Riders &amp; stage plots' : 'Contracts &amp; riders'} tab (type: Run of show).</div>`)
+    + '<div class="att-total" id="wAttTotal"></div>';
+  attTotal();
+}
+function attTotal() {
+  const bytes = [...document.querySelectorAll('#wAtts [data-att]:checked')].reduce((n, el) => n + Number(el.dataset.size), 0);
+  const over = bytes > 20 * 1024 * 1024;
+  $('#wAttTotal').innerHTML = `Attachments: ${fmtSize(bytes)} plus the letter${over ? ' · <strong>over 20 MB, most mail servers will reject this. Untick some files.</strong>' : ''}`;
+  $('#wAttTotal').classList.toggle('over', over);
+}
+$('#wAtts').addEventListener('change', attTotal);
 $('#wCancel').onclick = () => $('#welcomeDlg').close();
 $('#wSend').onclick = async () => {
   if (!$('#wTo').value.trim()) { toast("Enter the tour manager's email", true); $('#wTo').focus(); return; }
@@ -283,6 +304,7 @@ $('#wSend').onclick = async () => {
     await api(`/offers/${id}/welcome/send`, { method: 'POST', body: {
       to: $('#wTo').value, cc: $('#wCc').value, subject: $('#wSubject').value,
       message: $('#wMessage').value, attach_advance: $('#wAttachAdvance').checked,
+      attach: [...document.querySelectorAll('#wAtts [data-att]:checked')].map(el => el.dataset.att),
     } });
     $('#welcomeDlg').close();
     toast('Welcome package sent to ' + $('#wTo').value);
@@ -424,7 +446,7 @@ $('#clAdd').onsubmit = async (e) => {
 // ---- boot ----
 // Restricted roles get a subset of tabs (the server enforces the same limits).
 const ROLE_VIEW = {
-  production: { tabs: ['advance', 'docs'], start: 'advance', docsLabel: 'Riders & stage plots', noun: 'riders or stage plots' },
+  production: { tabs: ['advance', 'docs'], start: 'advance', docsLabel: 'Riders & stage plots', noun: 'riders, stage plots or run of show' },
   accounting: { tabs: ['payments', 'offer', 'docs'], start: 'payments', docsLabel: 'Documents', noun: 'contracts, FEC contracts, W-9s or insurance certificates' },
 };
 let ROLE = null;

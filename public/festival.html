@@ -39,6 +39,19 @@
       <button type="button" class="btn outline sm" id="wAdd">+ Add section</button>
     </div>
     <div class="card">
+      <h2>Attachments (sent with every welcome package)</h2>
+      <p style="margin:-6px 0 12px;color:var(--dim);font-size:13px">These go out with every act's welcome letter. Each show's own <strong>Run of show</strong> is uploaded on its offer instead. Files save as soon as they're uploaded.</p>
+      <div class="grid">
+        <div><label for="fKind">Type</label><select id="fKind"></select></div>
+      </div>
+      <div class="dropzone" id="fDrop">
+        Drag files here, or <label for="fFiles" style="display:inline;text-transform:none;letter-spacing:0;font-size:inherit;color:var(--accent);cursor:pointer;text-decoration:underline">choose files</label>
+        <input type="file" id="fFiles" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.heic,.txt,.rtf,.pages">
+        <div style="font-size:12px;margin-top:6px">PDF, Word, Excel or images · up to 30 MB each</div>
+      </div>
+      <div id="fList"></div>
+    </div>
+    <div class="card">
       <h2>Closing</h2>
       <label for="w_closing">Closing paragraph</label>
       <textarea id="w_closing" rows="2"></textarea>
@@ -112,6 +125,47 @@ $('#saveWelcome').onclick = async () => {
   } catch (e) { toast(e.message, true); }
   finally { $('#saveWelcome').disabled = false; }
 };
+// ---- welcome attachments (uploaded immediately) ----
+$('#fKind').innerHTML = Object.entries(PF.WELCOME_FILE_KINDS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+async function loadFiles() {
+  const files = await api(`/festival-options/${id}/files`);
+  const order = Object.keys(PF.WELCOME_FILE_KINDS);
+  files.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+  const have = new Set(files.map(f => f.kind));
+  const missing = order.filter(k => k !== 'other' && !have.has(k)).map(k => PF.WELCOME_FILE_KINDS[k]);
+  $('#fList').innerHTML = (files.length ? files.map(f => `
+    <div class="doc-row">
+      <div class="name"><span class="pill">${esc(PF.WELCOME_FILE_KINDS[f.kind] || 'Other')}</span> ${esc(f.original_name)}
+        <span class="meta">${fmtSize(f.size)} · ${esc(f.uploaded_by_name || '')} · ${fmtStamp(f.uploaded_at)}</span></div>
+      <div class="btn-row">
+        ${/^(application\/pdf|image\/(png|jpeg))$/.test(f.mime_type) ? `<a class="btn outline sm" target="_blank" href="/api/festival-files/${f.id}/download?view=1">View</a>` : ''}
+        <a class="btn outline sm" href="/api/festival-files/${f.id}/download">Download</a>
+        <button type="button" class="icon-btn" title="Delete" data-del-file="${f.id}">&times;</button>
+      </div>
+    </div>`).join('') : '<div class="empty">No attachments yet.</div>')
+    + (missing.length ? `<p style="font-size:12px;color:var(--dim);margin:10px 0 0">Not uploaded yet: ${esc(missing.join(', '))}</p>` : '');
+}
+async function uploadFestivalFiles(list) {
+  if (!list.length) return;
+  const fd = new FormData();
+  fd.append('kind', $('#fKind').value);
+  for (const f of list) fd.append('files', f);
+  $('#fDrop').style.opacity = 0.5;
+  try { const r = await api(`/festival-options/${id}/files`, { method: 'POST', body: fd }); toast(`Uploaded ${r.count} file${r.count > 1 ? 's' : ''}`); await loadFiles(); }
+  catch (e) { toast(e.message, true); }
+  finally { $('#fDrop').style.opacity = 1; $('#fFiles').value = ''; }
+}
+$('#fFiles').onchange = (e) => uploadFestivalFiles([...e.target.files]);
+$('#fDrop').ondragover = (e) => { e.preventDefault(); $('#fDrop').classList.add('over'); };
+$('#fDrop').ondragleave = () => $('#fDrop').classList.remove('over');
+$('#fDrop').ondrop = (e) => { e.preventDefault(); $('#fDrop').classList.remove('over'); uploadFestivalFiles([...e.dataTransfer.files]); };
+$('#fList').onclick = async (e) => {
+  const b = e.target.closest('[data-del-file]'); if (!b) return;
+  if (!confirm('Delete this attachment? It will no longer go out with welcome packages.')) return;
+  try { await api('/festival-files/' + b.dataset.delFile, { method: 'DELETE' }); toast('Attachment deleted'); loadFiles(); }
+  catch (ex) { toast(ex.message, true); }
+};
+
 function loadWelcome(w) {
   $('#w_dos_name').value = w.dos_name || '';
   $('#w_dos_phone').value = w.dos_phone || '';
@@ -139,6 +193,7 @@ initNav('admin').then(async () => {
     document.title = f.name + ' · Phantizy Productions';
     renderSections($('#form'), SECTIONS, f.details);
     loadWelcome(f.welcome || {});
+    loadFiles();
   } catch (e) {
     $('#title').textContent = 'Festival not found';
     $('#save').hidden = true;

@@ -73,6 +73,19 @@ CREATE TABLE IF NOT EXISTS festivals (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Files attached to every welcome package for a festival.
+CREATE TABLE IF NOT EXISTS festival_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  festival_id INTEGER NOT NULL REFERENCES festivals(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  original_name TEXT NOT NULL,
+  stored_name TEXT NOT NULL,
+  mime_type TEXT,
+  size INTEGER,
+  uploaded_by_name TEXT,
+  uploaded_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Emails sent from the site (welcome packages).
 CREATE TABLE IF NOT EXISTS email_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -3,12 +3,11 @@
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const express = require('express');
-const multer = require('multer');
 const db = require('../db/init');
+const { makeUpload, sendStoredFile } = require('../server/upload');
 const { requireAdmin } = require('../server/auth');
-const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS } = require('../public/fields');
+const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS, WELCOME_FILE_KINDS } = require('../public/fields');
 const { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, fillTemplate, welcomeVars } = require('../server/pdf');
 const mailer = require('../server/mailer');
 const { PassThrough } = require('stream');
@@ -17,24 +16,7 @@ const router = express.Router();
 const UPLOAD_DIR = db.UPLOAD_DIR;
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const ALLOWED_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.heic', '.txt', '.rtf', '.pages']);
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const dir = path.join(UPLOAD_DIR, String(Number(req.params.id)));
-      fs.mkdirSync(dir, { recursive: true });
-      cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-      cb(null, crypto.randomBytes(12).toString('hex') + path.extname(file.originalname).toLowerCase());
-    },
-  }),
-  limits: { fileSize: 30 * 1024 * 1024, files: 10 },
-  fileFilter: (req, file, cb) => {
-    const ok = ALLOWED_EXT.has(path.extname(file.originalname).toLowerCase());
-    cb(ok ? null : Object.assign(new Error('That file type is not allowed (PDF, Word, Excel, images, text)'), { status: 400 }), ok);
-  },
-});
+const upload = makeUpload(req => String(Number(req.params.id)));
 
 // ---- helpers ----
 
@@ -266,6 +248,26 @@ function festivalWelcome(offer) {
   const row = db.prepare('SELECT welcome FROM festivals WHERE name = ?').get(offer.festival_name);
   try { return (row && JSON.parse(row.welcome)) || {}; } catch { return {}; }
 }
+// Files that go out with this show's welcome package: the festival's shared
+// files (audio/lighting specs, plot, directions, map) plus this show's run of show.
+function welcomeAttachments(offer) {
+  const fest = db.prepare(`SELECT ff.* FROM festival_files ff JOIN festivals f ON f.id = ff.festival_id
+    WHERE f.name = ? ORDER BY ff.uploaded_at`).all(offer.festival_name)
+    .map(f => ({ source: 'festival', id: f.id, kind: f.kind, label: WELCOME_FILE_KINDS[f.kind] || 'Other',
+      name: f.original_name, size: f.size, mime: f.mime_type,
+      path: path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name)) }));
+  const ros = db.prepare("SELECT * FROM documents WHERE offer_id = ? AND kind = 'run_of_show' ORDER BY uploaded_at").all(offer.id)
+    .map(d => ({ source: 'offer', id: d.id, kind: d.kind, label: 'Run of show',
+      name: d.original_name, size: d.size, mime: d.mime_type,
+      path: path.join(UPLOAD_DIR, String(d.offer_id), path.basename(d.stored_name)) }));
+  // Festival files in their defined order, then the run of show.
+  const order = Object.keys(WELCOME_FILE_KINDS);
+  fest.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+  return [...fest, ...ros];
+}
+const publicAttachment = ({ path: _p, ...a }) => a;
+const enclosureNames = (atts) => atts.map(a => a.label === 'Other' ? a.name : a.label);
+
 function getAdvance(offerId) {
   return db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(offerId) || {};
 }
@@ -290,7 +292,8 @@ function emailList(v, label, required) {
 }
 
 router.get('/offers/:id/welcome.pdf', loadOffer, (req, res) => {
-  sendPdf(res, pdfName(req.offer, 'Welcome Package'), out => welcomeLetterPdf(req.offer, getAdvance(req.offer.id), festivalWelcome(req.offer), out));
+  const enclosures = enclosureNames(welcomeAttachments(req.offer));
+  sendPdf(res, pdfName(req.offer, 'Welcome Package'), out => welcomeLetterPdf(req.offer, getAdvance(req.offer.id), festivalWelcome(req.offer), out, enclosures));
 });
 
 // Draft of the email (editable in the browser) plus send history.
@@ -316,6 +319,7 @@ router.get('/offers/:id/welcome', loadOffer, (req, res) => {
     configured: mailer.isConfigured(),
     from: mailer.fromAddress(),
     hasFestivalText: !!(welcome.intro || (welcome.sections || []).length),
+    attachments: welcomeAttachments(req.offer).map(publicAttachment),
     to: adv.tour_manager_email || '',
     cc: req.user.email,
     subject: `Welcome to ${vars.festival || 'the festival'}: ${vars.artist}${vars.date ? ' (' + vars.date + ')' : ''}`,
@@ -334,11 +338,20 @@ router.post('/offers/:id/welcome/send', loadOffer, async (req, res, next) => {
     const text = String(b.message || '').slice(0, 20000);
     if (!subject) throw Object.assign(new Error('Subject is required'), { status: 400 });
     const adv = getAdvance(req.offer.id);
+    // Only files that belong to this festival / this show can be attached.
+    const wanted = new Set((Array.isArray(b.attach) ? b.attach : []).map(String));
+    const files = welcomeAttachments(req.offer).filter(a => wanted.has(`${a.source}:${a.id}`));
+    const total = files.reduce((n, f) => n + (f.size || 0), 0);
+    if (total > 20 * 1024 * 1024) throw Object.assign(new Error('Attachments are over 20 MB, which most mail servers reject. Untick some files.'), { status: 400 });
     const attachments = [{
       filename: pdfName(req.offer, 'Welcome Package').replace(/[^\w.\- ]+/g, ''),
-      content: await pdfBuffer(out => welcomeLetterPdf(req.offer, adv, festivalWelcome(req.offer), out)),
+      content: await pdfBuffer(out => welcomeLetterPdf(req.offer, adv, festivalWelcome(req.offer), out, enclosureNames(files))),
       contentType: 'application/pdf',
     }];
+    for (const f of files) {
+      if (!fs.existsSync(f.path)) throw Object.assign(new Error(`"${f.name}" is missing on the server; re-upload it`), { status: 409 });
+      attachments.push({ filename: f.name, content: fs.readFileSync(f.path), contentType: f.mime || undefined });
+    }
     if (b.attach_advance) {
       attachments.push({
         filename: pdfName(req.offer, 'Advance').replace(/[^\w.\- ]+/g, ''),
@@ -396,16 +409,7 @@ function loadDoc(req, res, next) {
 }
 
 router.get('/documents/:docId/download', loadDoc, (req, res) => {
-  const inline = req.query.view === '1';
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  // Only PDFs and images are shown inline; everything else downloads.
-  const viewable = /^(application\/pdf|image\/(png|jpeg))$/.test(req.doc.mime_type || '');
-  if (inline && viewable) {
-    res.type(req.doc.mime_type);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(req.doc.original_name)}"`);
-    return res.sendFile(req.docPath);
-  }
-  res.download(req.docPath, req.doc.original_name);
+  sendStoredFile(req, res, req.docPath, req.doc.mime_type, req.doc.original_name);
 });
 
 router.delete('/documents/:docId', loadDoc, (req, res) => {

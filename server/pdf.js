@@ -204,7 +204,7 @@ function welcomeVars(offer, advance, welcome) {
 // Welcome package letter to the tour manager: festival-wide text (Settings →
 // Festivals → Welcome package) plus this show's details from the offer and
 // advance sheet. No money or deal terms.
-function welcomeLetterPdf(offer, advance, welcome, out) {
+function welcomeLetterPdf(offer, advance, welcome, out, enclosures = []) {
   const doc = newDoc(out);
   const left = doc.page.margins.left;
   const width = doc.page.width - left * 2;
@@ -275,6 +275,14 @@ function welcomeLetterPdf(offer, advance, welcome, out) {
   doc.moveDown(0.3);
   para(fillTemplate(welcome.closing, vars));
   para(welcome.signoff ? fillTemplate(welcome.signoff, vars) : COMPANY().name, { bold: true });
+
+  if (enclosures.length) {
+    ensure(doc, 30 + enclosures.length * 14);
+    doc.moveDown(0.4);
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(DIM).text('ENCLOSED', left, doc.y, { characterSpacing: 1 });
+    doc.font('Helvetica').fontSize(10).fillColor(INK);
+    for (const e of enclosures) doc.text('•  ' + e, left + 4, doc.y, { width: width - 4 });
+  }
 
   footer(doc, `Welcome package · ${offer.artist_name || ''}`);
   doc.end();
