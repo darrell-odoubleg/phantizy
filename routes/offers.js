@@ -128,7 +128,7 @@ router.get('/offers', (req, res) => {
   if (restrictedRole(req) === 'production') return res.json(rows.map(r => only(r, [...base, 'rider_count'])));
   if (restrictedRole(req) === 'accounting') {
     return res.json(rows.map(r => only(r, [...base, 'guarantee', 'deposit_amount', 'deposit_due', 'deposit_paid_date',
-      'settlement_date', 'balance_paid_date', 'fec_count', 'w9_count', 'coi_count'])));
+      'settlement_date', 'balance_paid_date', 'contract_count', 'fec_count', 'w9_count', 'coi_count'])));
   }
   res.json(rows);
 });

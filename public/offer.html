@@ -352,7 +352,7 @@ $('#clAdd').onsubmit = async (e) => {
 // Restricted roles get a subset of tabs (the server enforces the same limits).
 const ROLE_VIEW = {
   production: { tabs: ['advance', 'docs'], start: 'advance', docsLabel: 'Riders & stage plots', noun: 'riders or stage plots' },
-  accounting: { tabs: ['payments', 'offer', 'docs'], start: 'payments', docsLabel: 'Documents', noun: 'FEC contracts, W-9s or insurance certificates' },
+  accounting: { tabs: ['payments', 'offer', 'docs'], start: 'payments', docsLabel: 'Documents', noun: 'contracts, FEC contracts, W-9s or insurance certificates' },
 };
 let ROLE = null;
 let DOCS_NOUN = 'contracts or riders';
