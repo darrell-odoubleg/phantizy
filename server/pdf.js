@@ -434,9 +434,12 @@ function runOfShowPdf({ festival, stage, day, rows, highlight, highlightOfferId 
   headerRow();
   const hl = String(highlight || '').trim().toLowerCase();
   (rows || []).forEach((r, n) => {
-    const cells = ROS_COLS.map(col => col.type === 'time'
-      ? [fmtTime(r.time), fmtTime(r.end)].filter(Boolean).join(' – ')
-      : String(r[col.key] || ''));
+    // Load-in rows show their time under Stage Setup, not Performance Time.
+    const cells = ROS_COLS.map(col => (r.li
+      ? (col.key === 'setup' ? [fmtTime(r.time), r.setup].filter(Boolean).join(' – ') : col.type === 'time' ? '' : String(r[col.key] || ''))
+      : col.type === 'time'
+        ? [fmtTime(r.time), fmtTime(r.end)].filter(Boolean).join(' – ')
+        : String(r[col.key] || '')));
     doc.font('Helvetica').fontSize(10);
     const h = Math.max(...cells.map((t, i) => doc.heightOfString(t || ' ', { width: ROS_COLS[i].w * width - pad * 2 }))) + pad * 2;
     if (y + h > bottom()) { doc.addPage(); y = doc.page.margins.top; headerRow(); }

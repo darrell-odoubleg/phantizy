@@ -8,7 +8,7 @@
 // each pair of consecutive acts (previous set end → next set start); its
 // Stage Setup is stored by the following act's offer_id ({ co: id }). Each
 // act with a Load in time on its advance sheet also gets a "<Act> Load In"
-// row; its Stage Setup is stored as { li: id }.
+// row; its time prints under Stage Setup (then any note, stored as { li: id }).
 // Festival-wide fixed rows (catering) are added to every stage and day,
 // shown in red and never stored. Everything is sorted by start time.
 
