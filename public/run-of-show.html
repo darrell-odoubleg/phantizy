@@ -154,7 +154,7 @@ function renderRosRows() {
     if (r.li) {
       return `<tr data-i="${i}" class="artist-row">
         <td>${esc(r.item)} <span class="pill" title="Load in from the advance sheet">from advance</span></td>
-        <td class="nowrap">Load In – <input type="text" data-k="note" value="${esc(r.note)}" placeholder="optional note" style="width:auto"></td>
+        <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="e.g. Backline to stage"></td>
         <td>${esc(fmtT(r.time))}</td><td></td><td></td>
         <td><a class="meta" href="/offer.html?id=${r.li}#advance" target="_blank" title="Change the load in time on the advance sheet">edit time</a></td>
       </tr>`;

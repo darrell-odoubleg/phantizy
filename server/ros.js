@@ -7,9 +7,8 @@
 // curfew, meet & greets). A Changeover row is added automatically between
 // each pair of consecutive acts (previous set end → next set start); its
 // Stage Setup is stored by the following act's offer_id ({ co: id }). Each
-// act with a Load in time on its advance sheet also gets a load-in row: Item
-// = the act, Stage Setup = "Load In" plus an optional note (`note`), stored
-// as { li: id, setup: note }.
+// act with a Load in time on its advance sheet also gets a "<Act> Load In"
+// row; its Stage Setup is stored as { li: id }.
 // Festival-wide fixed rows (catering) are added to every stage and day,
 // shown in red and never stored. Everything is sorted by start time.
 
@@ -83,8 +82,7 @@ function runOfShowRows(festivalName, stage, day) {
     return { offer_id: o.id, item: o.artist_name || '', setup: setupFor.get(o.id) || '', time: start, end, duration: durationText(start, end) };
   });
   const loadIns = offers.filter(o => RESTRICTED_STATUSES.includes(o.status) && toMin(o.load_in_time) !== null).map(o => ({
-    li: o.id, item: o.artist_name || '', note: liSetupFor.get(o.id) || '',
-    setup: ['Load In', liSetupFor.get(o.id)].filter(Boolean).join(' – '), time: o.load_in_time, end: '', duration: '',
+    li: o.id, item: `${o.artist_name || 'Artist'} Load In`, setup: liSetupFor.get(o.id) || '', time: o.load_in_time, end: '', duration: '',
   }));
   const manualRows = stored.filter(r => !r.offer_id && !r.co && !r.li).map(r => ({
     item: r.item || '', setup: r.setup || '', time: r.time || '', end: r.end || '',
