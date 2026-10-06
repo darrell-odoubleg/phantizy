@@ -57,7 +57,7 @@
       { key: 'announce_restrictions', label: 'Announce restrictions / exclusivity', type: 'textarea' },
     ]},
     { title: 'Provided by Festival', festivalWide: true, fields: [
-      { key: 'production_provided', label: 'Stage production & backline (shared / line check only)', type: 'textarea' },
+      { key: 'production_provided', label: 'Stage production', type: 'textarea' },
       { key: 'staging_provided', label: 'Staging', type: 'textarea' },
       { key: 'audio_provided', label: 'Audio', type: 'textarea' },
       { key: 'drum_risers_provided', label: 'Drum risers', type: 'textarea' },
