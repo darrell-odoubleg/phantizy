@@ -86,7 +86,7 @@
         <input type="text" id="clNew" placeholder="Add a task for this show…">
         <button class="btn sm">Add</button>
       </form>
-      <p style="font-size:12px;color:var(--dim);margin:12px 0 0">Items tagged <span class="auto">auto</span> tick themselves when the status changes, a contract/rider/W-9 is uploaded, or a payment date is entered. Admins can change the default list in Settings.</p>
+      <p style="font-size:12px;color:var(--dim);margin:12px 0 0">Items tagged <span class="auto">auto</span> tick themselves when the status changes, a contract, rider, W-9 or insurance certificate is uploaded, or a payment date is entered. Admins can change the default list in Settings.</p>
     </div>
   </section>
 </div>
@@ -262,7 +262,7 @@ function renderDocs() {
   $('#docList').innerHTML = Object.entries(PF.DOC_KINDS).map(([kind, label]) => {
     const list = docs.filter(d => d.kind === kind);
     if (!list.length) return '';
-    return `<div class="doc-group"><h3>${esc(label)}${list.length > 1 ? 's' : ''}</h3>${list.map(d => `
+    return `<div class="doc-group"><h3>${esc(label)}${list.length > 1 ? ` (${list.length})` : ''}</h3>${list.map(d => `
       <div class="doc-row">
         <div class="name">${esc(d.original_name)}
           <span class="meta">${d.label ? esc(d.label) + ' · ' : ''}${fmtSize(d.size)} · ${esc(d.uploaded_by_name || '')} · ${fmtStamp(d.uploaded_at)}</span></div>

@@ -176,6 +176,7 @@
 
   const DOC_KINDS = {
     contract: 'Contract',
+    coi: 'Certificate of insurance',
     rider_technical: 'Technical rider',
     rider_hospitality: 'Hospitality rider',
     stage_plot: 'Stage plot / input list',

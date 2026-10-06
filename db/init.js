@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_offer ON documents(offer_id);
 
 -- auto_key ties an item to an event that checks it off automatically:
--- status_sent, status_accepted, doc_contract, doc_rider, doc_w9,
+-- status_sent, status_accepted, doc_contract, doc_rider, doc_w9, doc_coi,
 -- pay_deposit, pay_settlement, pay_balance (status_completed: older rows).
 -- Festivals offered in the Festival dropdown (managed in Settings).
 CREATE TABLE IF NOT EXISTS festivals (
@@ -136,7 +136,7 @@ const DEFAULT_CHECKLIST = [
   ['Signed contract uploaded', 'doc_contract'],
   ['Deposit paid', 'pay_deposit'],
   ['W-9 received', 'doc_w9'],
-  ['Certificate of insurance received', null],
+  ['Certificate of insurance received', 'doc_coi'],
   ['Riders received', 'doc_rider'],
   ['Riders reviewed / production approved', null],
   ['Hotel booked', null],
@@ -160,10 +160,10 @@ if (db.prepare('SELECT COUNT(*) AS n FROM festivals').get().n === 0) {
   db.prepare('INSERT INTO festivals (name) VALUES (?)').run('Rock the Locks Music Festival');
 }
 
-// Link checklist items created before W-9 / payment tracking existed to
+// Link checklist items created before W-9 / COI / payment tracking existed to
 // their new auto ticks (matched by the default label; renamed items are left alone).
 const AUTO_LINKS = [
-  ['W-9 received', 'doc_w9'], ['Deposit paid', 'pay_deposit'],
+  ['W-9 received', 'doc_w9'], ['Certificate of insurance received', 'doc_coi'], ['Deposit paid', 'pay_deposit'],
   ['Settlement completed', 'pay_settlement'], ['Balance paid', 'pay_balance'],
 ];
 for (const table of ['checklist_template', 'checklist_items']) {

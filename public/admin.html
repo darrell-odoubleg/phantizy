@@ -41,7 +41,7 @@
           <span style="font-size:12px;color:var(--dim);margin-left:8px">Send them the password yourself. They can change it under Account.</span></div>
         <div class="wide" style="font-size:12px;color:var(--dim);margin-top:10px;line-height:1.6">
           <strong>Admin</strong>: everything, including users, festivals and deleting offers.
-          <strong>Staff</strong>: offers, contracts, riders, advance sheets and checklists.
+          <strong>Staff</strong>: offers, contracts, insurance certificates, riders, advance sheets and checklists.
           <strong>Production</strong> (technicians, production managers): confirmed shows only, with the advance sheet, riders and stage plots. No deal terms, money, contracts or checklists.
           <strong>Accounting</strong>: accepted offers (read-only), W-9s, and the Payments tab (deposit, settlement and balance dates and confirmation numbers). No advance sheets, riders, contracts or checklists.
         </div>
@@ -77,7 +77,7 @@
 <script src="/app.js"></script>
 <script>
 const $ = (s) => document.querySelector(s);
-const AUTO_LABELS = { status_sent: 'when status → Sent', status_accepted: 'when status → Accepted', status_completed: 'when status → Completed', doc_contract: 'when a contract is uploaded', doc_rider: 'when a rider/stage plot is uploaded' };
+const AUTO_LABELS = { status_sent: 'when status → Sent', status_accepted: 'when status → Accepted', status_completed: 'when status → Completed', doc_contract: 'when a contract is uploaded', doc_rider: 'when a rider/stage plot is uploaded', doc_w9: 'when a W-9 is uploaded', doc_coi: 'when a certificate of insurance is uploaded', pay_deposit: 'when the deposit paid date is entered', pay_settlement: 'when the settlement date is entered', pay_balance: 'when the balance paid date is entered' };
 let tpl = [];
 
 $('#pwForm').onsubmit = async (e) => {

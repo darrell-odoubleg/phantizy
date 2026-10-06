@@ -274,6 +274,7 @@ router.post('/offers/:id/documents', loadOffer, upload.array('files', 10), (req,
   if (kind === 'contract') autoCheck(req.offer.id, 'doc_contract', req.user.name);
   if (kind.startsWith('rider') || kind === 'stage_plot') autoCheck(req.offer.id, 'doc_rider', req.user.name);
   if (kind === 'w9') autoCheck(req.offer.id, 'doc_w9', req.user.name);
+  if (kind === 'coi') autoCheck(req.offer.id, 'doc_coi', req.user.name);
   res.json({ ok: true, count: files.length });
 });
 
