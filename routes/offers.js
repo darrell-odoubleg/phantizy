@@ -8,7 +8,7 @@ const db = require('../db/init');
 const { makeUpload, sendStoredFile } = require('../server/upload');
 const { requireAdmin } = require('../server/auth');
 const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS, WELCOME_FILE_KINDS } = require('../public/fields');
-const { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, fillTemplate, welcomeVars } = require('../server/pdf');
+const { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, runOfShowPdf, fillTemplate, welcomeVars } = require('../server/pdf');
 const mailer = require('../server/mailer');
 const pdfMerge = require('../server/pdfMerge');
 const { PassThrough } = require('stream');
@@ -257,10 +257,22 @@ function welcomeAttachments(offer) {
   const asAtt = (f, label) => ({ source: 'festival', id: f.id, kind: f.kind, label,
     name: f.original_name, size: f.size, mime: f.mime_type,
     path: path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name)) });
-  // The run of show for this act's stage and performance date goes first.
+  // The run of show for this act's stage and performance date goes first:
+  // the table built in the site if it has rows, otherwise an uploaded file.
   const norm = (s) => String(s || '').trim().toLowerCase();
-  const ros = all.filter(f => f.kind === 'run_of_show' && norm(f.stage) === norm(offer.stage) && f.day === offer.event_date)
-    .map(f => asAtt(f, 'Run of show'));
+  const table = db.prepare(`SELECT r.*, f.name AS festival FROM festival_ros r JOIN festivals f ON f.id = r.festival_id
+    WHERE f.name = ? AND r.day = ?`).all(offer.festival_name, offer.event_date || '')
+    .find(r => norm(r.stage) === norm(offer.stage) && r.rows !== '[]');
+  let ros;
+  if (table) {
+    const rows = JSON.parse(table.rows);
+    ros = [{ source: 'ros', id: table.id, kind: 'run_of_show', label: 'Run of show', name: `Run of show: ${table.stage}, ${rows.length} items`,
+      size: null, mime: 'application/pdf',
+      build: (out) => runOfShowPdf({ festival: table.festival, stage: table.stage, day: table.day, rows, highlight: offer.artist_name }, out) }];
+  } else {
+    ros = all.filter(f => f.kind === 'run_of_show' && norm(f.stage) === norm(offer.stage) && f.day === offer.event_date)
+      .map(f => asAtt(f, 'Run of show'));
+  }
   const order = Object.keys(WELCOME_FILE_KINDS);
   const rest = all.filter(f => f.kind !== 'run_of_show')
     .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
@@ -278,7 +290,7 @@ function runOfShowGap(offer) {
   if (!stages.some(s => s.trim().toLowerCase() === offer.stage.trim().toLowerCase())) return `"${offer.stage}" isn't one of the festival's stages in Settings, so no run of show matches.`;
   return `No run of show uploaded yet for ${offer.stage} on this date (Settings → Festivals → Details & welcome).`;
 }
-const publicAttachment = ({ path: _p, ...a }) => ({ ...a, mergeable: pdfMerge.canMerge(a) });
+const publicAttachment = ({ path: _p, build: _b, ...a }) => ({ ...a, generated: !!_b, mergeable: !!_b || pdfMerge.canMerge(a) });
 
 // One PDF: the letter (with a numbered contents list), then every mergeable
 // attachment, then the advance sheet if asked for. Returns the PDF plus any
@@ -287,7 +299,8 @@ async function buildWelcomePackage(offer, files, includeAdvance) {
   const adv = getAdvance(offer.id);
   const welcome = festivalWelcome(offer);
   for (const f of files) {
-    if (!fs.existsSync(f.path)) throw Object.assign(new Error(`"${f.name}" is missing on the server; re-upload it`), { status: 409 });
+    if (f.build) f.bytes = await pdfBuffer(f.build); // generated (run of show table)
+    else if (!fs.existsSync(f.path)) throw Object.assign(new Error(`"${f.name}" is missing on the server; re-upload it`), { status: 409 });
   }
   const { parts, separate } = await pdfMerge.prepare(files);
   if (includeAdvance) {

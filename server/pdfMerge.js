@@ -23,7 +23,7 @@ async function prepare(attachments) {
   for (const a of attachments) {
     if (!canMerge(a)) { separate.push(a); continue; }
     try {
-      const bytes = fs.readFileSync(a.path);
+      const bytes = a.bytes || fs.readFileSync(a.path);
       if (isPdf(a)) {
         const pdf = await PDFDocument.load(bytes); // throws on encrypted PDFs
         parts.push({ att: a, pdf, pages: pdf.getPageCount() });

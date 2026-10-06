@@ -304,4 +304,59 @@ function welcomeLetterPdf(offer, advance, welcome, out, contents = [], separate 
   doc.end();
 }
 
-module.exports = { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, fillTemplate, welcomeVars };
+// Run of show table for one stage on one day. highlight: text (the act's
+// name) whose rows are shaded so the act can find its slot.
+const ROS_COLS = [
+  { key: 'item', label: 'Item', w: 0.34 },
+  { key: 'setup', label: 'Stage Setup', w: 0.30 },
+  { key: 'time', label: 'Performance Time', w: 0.21, type: 'time' },
+  { key: 'duration', label: 'Duration', w: 0.15 },
+];
+function runOfShowPdf({ festival, stage, day, rows, highlight }, out) {
+  const doc = newDoc(out);
+  const c = COMPANY();
+  const left = doc.page.margins.left;
+  const width = doc.page.width - left * 2;
+  const bottom = () => doc.page.height - doc.page.margins.bottom;
+
+  let y = doc.page.margins.top;
+  if (fs.existsSync(LOGO_PATH)) doc.image(LOGO_PATH, left, y, { fit: [140, 44] });
+  doc.font('Helvetica').fontSize(8.5).fillColor(DIM).text([c.address, c.contact].filter(Boolean).join('\n'), left, y + 4, { width, align: 'right' });
+  y += 60;
+  doc.font('Helvetica-Bold').fontSize(20).fillColor(INK).text('RUN OF SHOW', left, y);
+  doc.font('Helvetica-Bold').fontSize(13).fillColor(ACCENT).text(`${stage}  ·  ${fmtDate(day)}`);
+  if (festival) doc.font('Helvetica').fontSize(10.5).fillColor(DIM).text(festival);
+  y = doc.y + 12;
+
+  const colX = []; let x = left;
+  for (const col of ROS_COLS) { colX.push(x); x += col.w * width; }
+  const pad = 6;
+  const headerRow = () => {
+    doc.font('Helvetica-Bold').fontSize(8.5);
+    const hh = Math.max(...ROS_COLS.map(col => doc.heightOfString(col.label.toUpperCase(), { width: col.w * width - pad * 2, characterSpacing: 0.5 }))) + 14;
+    doc.rect(left, y, width, hh).fill(ACCENT);
+    ROS_COLS.forEach((col, i) => doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#ffffff')
+      .text(col.label.toUpperCase(), colX[i] + pad, y + 7, { width: col.w * width - pad * 2, characterSpacing: 0.5 }));
+    y += hh;
+  };
+  headerRow();
+  const hl = String(highlight || '').trim().toLowerCase();
+  (rows || []).forEach((r, n) => {
+    const cells = ROS_COLS.map(col => col.type === 'time' ? fmtTime(r[col.key]) : String(r[col.key] || ''));
+    doc.font('Helvetica').fontSize(10);
+    const h = Math.max(...cells.map((t, i) => doc.heightOfString(t || ' ', { width: ROS_COLS[i].w * width - pad * 2 }))) + pad * 2;
+    if (y + h > bottom()) { doc.addPage(); y = doc.page.margins.top; headerRow(); }
+    const mine = hl && String(r.item || '').toLowerCase().includes(hl);
+    if (mine) doc.rect(left, y, width, h).fill('#EEEAF4');
+    else if (n % 2) doc.rect(left, y, width, h).fill('#F7F6F9');
+    cells.forEach((t, i) => doc.font(mine ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor(INK)
+      .text(t, colX[i] + pad, y + pad, { width: ROS_COLS[i].w * width - pad * 2 }));
+    y += h;
+    doc.moveTo(left, y).lineTo(left + width, y).lineWidth(0.4).strokeColor(RULE).stroke();
+  });
+  if (!(rows || []).length) doc.font('Helvetica-Oblique').fontSize(10).fillColor(DIM).text('No items yet.', left, y + 10);
+  footer(doc, `Run of show · ${stage} · ${fmtDate(day)}`);
+  doc.end();
+}
+
+module.exports = { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, runOfShowPdf, fillTemplate, welcomeVars };

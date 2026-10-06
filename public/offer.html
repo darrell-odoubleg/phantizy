@@ -296,7 +296,7 @@ function renderAtts() {
 
   $('#wAtts').innerHTML = `<div class="att-row"><input type="checkbox" checked disabled> <span class="pill">Letter</span> Welcome letter (PDF)</div>`
     + WATTS.map(a => `<label class="att-row"><input type="checkbox" data-att="${a.source}:${a.id}" data-size="${a.size || 0}" checked>
-        <span class="pill">${esc(a.label)}</span> ${esc(a.name)}${a.mergeable ? '' : ' <em class="sep-note">attached separately (Word/Excel can\'t be combined)</em>'} <span class="meta">${fmtSize(a.size || 0)}</span></label>`).join('')
+        <span class="pill">${esc(a.label)}</span> ${esc(a.name)}${a.mergeable ? '' : ' <em class="sep-note">attached separately (Word/Excel can\'t be combined)</em>'} <span class="meta">${a.generated ? 'built in site' : fmtSize(a.size || 0)}</span></label>`).join('')
     + (RUN_NOTE ? `<div class="att-hint">${esc(RUN_NOTE)}</div>` : '')
     + '<div class="att-total" id="wAttTotal"></div>';
   attTotal();

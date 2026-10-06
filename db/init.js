@@ -86,6 +86,19 @@ CREATE TABLE IF NOT EXISTS festival_files (
   uploaded_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Run of show built in the site: one table per festival stage per day.
+-- rows: JSON [{ item, setup, time, duration }]
+CREATE TABLE IF NOT EXISTS festival_ros (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  festival_id INTEGER NOT NULL REFERENCES festivals(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL,
+  day TEXT NOT NULL,
+  rows TEXT NOT NULL DEFAULT '[]',
+  updated_by_name TEXT,
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE (festival_id, stage, day)
+);
+
 -- Emails sent from the site (welcome packages).
 CREATE TABLE IF NOT EXISTS email_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

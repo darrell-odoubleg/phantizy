@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { OFFER_SECTIONS, ROLES, WELCOME_FILE_KINDS } = require('../public/fields');
 const { makeUpload, sendStoredFile, UPLOAD_DIR } = require('../server/upload');
+const { runOfShowPdf } = require('../server/pdf');
 const festivalUpload = makeUpload(req => path.join('festivals', String(Number(req.params.id))));
 const cleanRole = (r) => (ROLES[r] ? r : 'staff');
 
@@ -165,6 +166,7 @@ router.put('/festival-options/:id/schedule', requireAdmin, (req, res) => {
       const now = stages[i];
       if (now && now !== old && !oldStages.includes(now)) {
         db.prepare("UPDATE festival_files SET stage = ? WHERE festival_id = ? AND kind = 'run_of_show' AND stage = ?").run(now, f.id, old);
+        db.prepare('UPDATE festival_ros SET stage = ? WHERE festival_id = ? AND stage = ?').run(now, f.id, old);
         db.prepare('UPDATE offers SET stage = ? WHERE festival_name = ? AND stage = ?').run(now, f.name, old);
       }
     });
@@ -173,10 +175,12 @@ router.put('/festival-options/:id/schedule', requireAdmin, (req, res) => {
       const now = days[i];
       if (now && now !== old && !oldDays.includes(now)) {
         db.prepare("UPDATE festival_files SET day = ? WHERE festival_id = ? AND kind = 'run_of_show' AND day = ?").run(now, f.id, old);
+        db.prepare('UPDATE festival_ros SET day = ? WHERE festival_id = ? AND day = ?').run(now, f.id, old);
       }
     });
     // Removing a stage or day that still has a run of show would orphan it.
-    const orphan = db.prepare(`SELECT stage, day FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show'`).all(f.id)
+    const orphan = db.prepare(`SELECT stage, day FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show'
+      UNION SELECT stage, day FROM festival_ros WHERE festival_id = ? AND rows != '[]'`).all(f.id, f.id)
       .find(r => !stages.includes(r.stage) || !days.includes(r.day));
     if (orphan) throw Object.assign(new Error(`Delete the run of show for ${orphan.stage} on ${orphan.day} before removing that stage or day`), { status: 409 });
     db.prepare('UPDATE festivals SET stages = ?, days = ? WHERE id = ?').run(JSON.stringify(stages), JSON.stringify(days), f.id);
@@ -185,8 +189,44 @@ router.put('/festival-options/:id/schedule', requireAdmin, (req, res) => {
 });
 
 router.get('/festival-options/:id/run-of-show', requireAdmin, (req, res) => {
-  res.json(db.prepare(`SELECT id, stage, day, original_name, mime_type, size, uploaded_by_name, uploaded_at
-    FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show'`).all(Number(req.params.id)));
+  const fid = Number(req.params.id);
+  res.json({
+    files: db.prepare(`SELECT id, stage, day, original_name, mime_type, size, uploaded_by_name, uploaded_at
+      FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show'`).all(fid),
+    tables: db.prepare(`SELECT id, stage, day, rows, updated_by_name, updated_at FROM festival_ros WHERE festival_id = ?`).all(fid)
+      .map(t => ({ ...t, rows: parseList(t.rows) })),
+  });
+});
+
+// Run of show table for one stage + day (built in the site).
+function rosSlot(req, res) {
+  const fest = db.prepare('SELECT * FROM festivals WHERE id = ?').get(Number(req.params.id));
+  if (!fest) { res.status(404).json({ error: 'Festival not found' }); return null; }
+  const stage = String((req.body && req.body.stage) || req.query.stage || '');
+  const day = String((req.body && req.body.day) || req.query.day || '');
+  if (!parseList(fest.stages).includes(stage) || !parseList(fest.days).includes(day)) { res.status(400).json({ error: 'Unknown stage or day' }); return null; }
+  return { fest, stage, day };
+}
+
+router.put('/festival-options/:id/run-of-show-table', requireAdmin, (req, res) => {
+  const slot = rosSlot(req, res); if (!slot) return;
+  const str = (v, max) => String(v ?? '').trim().slice(0, max);
+  const rows = (Array.isArray(req.body.rows) ? req.body.rows : []).slice(0, 200)
+    .map(r => ({ item: str(r.item, 300), setup: str(r.setup, 300), time: /^\d{1,2}:\d{2}$/.test(r.time || '') ? r.time : str(r.time, 20), duration: str(r.duration, 60) }))
+    .filter(r => r.item || r.setup || r.time || r.duration);
+  db.prepare(`INSERT INTO festival_ros (festival_id, stage, day, rows, updated_by_name, updated_at)
+              VALUES (?, ?, ?, ?, ?, datetime('now'))
+              ON CONFLICT (festival_id, stage, day) DO UPDATE SET rows = excluded.rows, updated_by_name = excluded.updated_by_name, updated_at = excluded.updated_at`)
+    .run(slot.fest.id, slot.stage, slot.day, JSON.stringify(rows), req.user.name);
+  res.json({ ok: true, count: rows.length });
+});
+
+router.get('/festival-options/:id/run-of-show.pdf', requireAdmin, (req, res) => {
+  const slot = rosSlot(req, res); if (!slot) return;
+  const t = db.prepare('SELECT rows FROM festival_ros WHERE festival_id = ? AND stage = ? AND day = ?').get(slot.fest.id, slot.stage, slot.day);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="Run of show - ${slot.stage} - ${slot.day}.pdf"`.replace(/[^\w.\- =";]+/g, ''));
+  runOfShowPdf({ festival: slot.fest.name, stage: slot.stage, day: slot.day, rows: t ? parseList(t.rows) : [] }, res);
 });
 
 // One file per stage + day; uploading again replaces it.
