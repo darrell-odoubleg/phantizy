@@ -1,17 +1,18 @@
 // mailer.js
-// Outgoing email through Gmail SMTP (port 587 + STARTTLS; 465 is blocked on
-// this VPS). Credentials live in .env: SMTP_USER and SMTP_PASS (a Google
-// "app password", not the account password). Until SMTP_PASS is set,
-// isConfigured() is false and the UI offers the PDF download only.
+// Outgoing email over SMTP (port 587 + STARTTLS; 465 is blocked on this VPS).
+// Settings live in .env: SMTP_HOST / SMTP_USER / SMTP_PASS — currently the
+// info@phantizyproductions.com mailbox on mail.phantizyproductions.com.
+// Until SMTP_PASS is set, isConfigured() is false and the UI offers the PDF
+// download only.
 
 const nodemailer = require('nodemailer');
 
 function settings() {
   return {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    host: process.env.SMTP_HOST || 'mail.phantizyproductions.com',
     port: Number(process.env.SMTP_PORT || 587),
     user: process.env.SMTP_USER || '',
-    pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''), // Google shows app passwords in groups of 4
+    pass: process.env.SMTP_PASS || '',
     fromName: process.env.COMPANY_NAME || 'Phantizy Productions',
   };
 }
