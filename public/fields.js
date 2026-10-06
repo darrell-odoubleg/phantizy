@@ -62,6 +62,7 @@
       { key: 'audio_provided', label: 'Audio', type: 'textarea' },
       { key: 'drum_risers_provided', label: 'Drum risers', type: 'textarea' },
       { key: 'lighting_provided', label: 'Lighting', type: 'textarea' },
+      { key: 'backline_provided_by', label: 'Backline', type: 'select', options: ['Backline provided by artist', 'Backline provided by venue'] },
       { key: 'hospitality_buyout', label: 'Hospitality / artist village / buyout', type: 'textarea' },
       { key: 'lodging', label: 'Lodging', type: 'textarea' },
       { key: 'ground_transport', label: 'Ground transport / on-site shuttles', type: 'textarea' },
