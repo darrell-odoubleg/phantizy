@@ -312,21 +312,31 @@ const ROS_COLS = [
   { key: 'time', label: 'Performance Time', w: 0.28, type: 'time' },
   { key: 'duration', label: 'Duration', w: 0.15 },
 ];
+// Festival-specific run of show header logo and Main Stage curfew lines.
+// Calibri isn't on the server; Carlito is its metric-compatible twin.
+const CALIBRI = '/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf';
+const CALIBRI_BOLD = '/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf';
+const ROS_FESTIVALS = [{
+  match: /rock the locks/i,
+  logo: path.join(__dirname, '..', 'public', 'ros-logo-rock-the-locks.png'),
+  // Main Stage hard stop by weekday (0 = Sunday … 6 = Saturday).
+  hardStop: { 5: '11:00 PM', 6: '11:00 PM', 0: '9:00 PM' },
+}];
 function runOfShowPdf({ festival, stage, day, rows, highlight, highlightOfferId }, out) {
   const doc = newDoc(out);
-  const c = COMPANY();
   const left = doc.page.margins.left;
   const width = doc.page.width - left * 2;
   const bottom = () => doc.page.height - doc.page.margins.bottom;
+  const fest = ROS_FESTIVALS.find(f => f.match.test(festival || ''));
+  const font = (bold) => (fs.existsSync(CALIBRI) ? (bold ? CALIBRI_BOLD : CALIBRI) : (bold ? 'Helvetica-Bold' : 'Helvetica'));
 
   let y = doc.page.margins.top;
-  if (fs.existsSync(LOGO_PATH)) doc.image(LOGO_PATH, left, y, { fit: [140, 44] });
-  doc.font('Helvetica').fontSize(8.5).fillColor(DIM).text([c.address, c.contact].filter(Boolean).join('\n'), left, y + 4, { width, align: 'right' });
-  y += 60;
-  doc.font('Helvetica-Bold').fontSize(20).fillColor(INK).text('RUN OF SHOW', left, y);
-  doc.font('Helvetica-Bold').fontSize(13).fillColor(ACCENT).text(`${stage}  ·  ${fmtDate(day)}`);
-  if (festival) doc.font('Helvetica').fontSize(10.5).fillColor(DIM).text(festival);
-  y = doc.y + 12;
+  const logo = fest && fs.existsSync(fest.logo) ? fest.logo : fs.existsSync(LOGO_PATH) ? LOGO_PATH : null;
+  if (logo) { doc.image(logo, left, y, { fit: [width, 130], align: 'center' }); y += 140; }
+  doc.font(font(true)).fontSize(36).fillColor(INK).text('Run of Show', left, y, { width, align: 'center' });
+  doc.font(font(true)).fontSize(22).fillColor(ACCENT).text(stage || '', { width, align: 'center' });
+  doc.font(font(false)).fontSize(18).fillColor(INK).text(fmtDate(day), { width, align: 'center' });
+  y = doc.y + 14;
 
   const colX = []; let x = left;
   for (const col of ROS_COLS) { colX.push(x); x += col.w * width; }
@@ -359,6 +369,14 @@ function runOfShowPdf({ festival, stage, day, rows, highlight, highlightOfferId 
     doc.moveTo(left, y).lineTo(left + width, y).lineWidth(0.4).strokeColor(RULE).stroke();
   });
   if (!(rows || []).length) doc.font('Helvetica-Oblique').fontSize(10).fillColor(DIM).text('No items yet.', left, y + 10);
+  const stop = fest && /^main stage$/i.test(String(stage || '').trim()) && fest.hardStop[new Date(day + 'T00:00:00').getDay()];
+  if (stop) {
+    const text = `HARD STOP AT ${stop}`;
+    doc.font(font(true)).fontSize(36);
+    y += (rows || []).length ? 18 : 40;
+    if (y + doc.heightOfString(text, { width }) > bottom()) { doc.addPage(); y = doc.page.margins.top; }
+    doc.fillColor('#FF0000').text(text, left, y, { width, align: 'center' });
+  }
   footer(doc, `Run of show · ${stage} · ${fmtDate(day)}`);
   doc.end();
 }
