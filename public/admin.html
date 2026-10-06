@@ -36,9 +36,14 @@
         <div><label for="uName" class="req">Name</label><input type="text" id="uName" required></div>
         <div><label for="uEmail" class="req">Email</label><input type="email" id="uEmail" required></div>
         <div><label for="uPw" class="req">Temporary password</label><input type="text" id="uPw" minlength="8" required autocomplete="off"></div>
-        <div><label for="uRole">Role</label><select id="uRole"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
+        <div><label for="uRole">Role</label><select id="uRole"><option value="staff">Staff</option><option value="production">Production</option><option value="admin">Admin</option></select></div>
         <div class="wide"><button class="btn">Add user</button>
           <span style="font-size:12px;color:var(--dim);margin-left:8px">Send them the password yourself. They can change it under Account.</span></div>
+        <div class="wide" style="font-size:12px;color:var(--dim);margin-top:10px;line-height:1.6">
+          <strong>Admin</strong>: everything, including users, festivals and deleting offers.
+          <strong>Staff</strong>: offers, contracts, riders, advance sheets and checklists.
+          <strong>Production</strong> (technicians, production managers): confirmed shows only, with the advance sheet, riders and stage plots. No deal terms, money, contracts or checklists.
+        </div>
       </form>
     </div>
 
@@ -88,8 +93,7 @@ async function loadUsers() {
     <tr data-id="${u.id}">
       <td>${esc(u.name)}</td><td>${esc(u.email)}</td>
       <td><select data-f="role" style="margin:0;width:auto"${u.id === ME.id ? ' disabled' : ''}>
-        <option value="staff"${u.role === 'staff' ? ' selected' : ''}>Staff</option>
-        <option value="admin"${u.role === 'admin' ? ' selected' : ''}>Admin</option></select></td>
+        ${Object.entries(PF.ROLES).map(([k, l]) => `<option value="${k}"${u.role === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
       <td>${u.active ? 'Active' : '<span style="color:var(--danger)">Disabled</span>'}</td>
       <td class="btn-row" style="justify-content:flex-end">
         <button class="btn outline sm" data-act="pw">Reset password</button>

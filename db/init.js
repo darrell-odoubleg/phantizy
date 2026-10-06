@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('admin','staff')),
+  role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('admin','staff','production')),
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -93,6 +93,29 @@ CREATE TABLE IF NOT EXISTS checklist_items (
 CREATE INDEX IF NOT EXISTS idx_checklist_offer ON checklist_items(offer_id);
 `);
 
+// Databases created before the production role have the old CHECK on
+// users.role; SQLite can't alter a CHECK, so rebuild the table once.
+const usersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql;
+if (!usersSql.includes("'production'")) {
+  db.pragma('foreign_keys = OFF');
+  db.transaction(() => {
+    db.exec(`CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('admin','staff','production')),
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    INSERT INTO users_new (id, name, email, password_hash, role, active, created_at)
+      SELECT id, name, email, password_hash, role, active, created_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;`);
+  })();
+  db.pragma('foreign_keys = ON');
+}
+
 function addMissingColumns(table, fields) {
   const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
   for (const f of fields) {
@@ -136,4 +159,7 @@ if (db.prepare('SELECT COUNT(*) AS n FROM festivals').get().n === 0) {
 }
 
 module.exports = db;
-module.exports.UPLOAD_DIR = path.join(APP_ROOT, 'uploads');
+// UPLOAD_DIR is overridable so test runs never write into the live uploads folder.
+module.exports.UPLOAD_DIR = process.env.UPLOAD_DIR
+  ? path.resolve(APP_ROOT, process.env.UPLOAD_DIR)
+  : path.join(APP_ROOT, 'uploads');

@@ -5,7 +5,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db/init');
 const { requireAdmin, hashPassword } = require('../server/auth');
-const { OFFER_SECTIONS } = require('../public/fields');
+const { OFFER_SECTIONS, ROLES } = require('../public/fields');
+const cleanRole = (r) => (ROLES[r] ? r : 'staff');
 
 // Offer fields a festival can supply defaults for (its festivalWide sections).
 const FESTIVAL_DETAIL_FIELDS = OFFER_SECTIONS.filter(s => s.festivalWide).flatMap(s => s.fields)
@@ -33,7 +34,7 @@ router.post('/users', requireAdmin, (req, res) => {
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
   try {
     const info = db.prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)')
-      .run(String(name).trim(), String(email).trim(), hashPassword(password), role === 'admin' ? 'admin' : 'staff');
+      .run(String(name).trim(), String(email).trim(), hashPassword(password), cleanRole(role));
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'That email already has an account' });
@@ -46,11 +47,11 @@ router.patch('/users/:id', requireAdmin, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const { name, role, active, password } = req.body || {};
-  if (id === req.user.id && (role === 'staff' || active === false)) {
+  if (id === req.user.id && ((role !== undefined && role !== 'admin') || active === false)) {
     return res.status(400).json({ error: "You can't demote or deactivate yourself" });
   }
   if (name !== undefined) db.prepare('UPDATE users SET name = ? WHERE id = ?').run(String(name).trim(), id);
-  if (role !== undefined) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role === 'admin' ? 'admin' : 'staff', id);
+  if (role !== undefined) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(cleanRole(role), id);
   if (active !== undefined) {
     db.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
     // Sign out a deactivated user's open sessions.

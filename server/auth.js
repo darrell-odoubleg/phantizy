@@ -65,9 +65,29 @@ function requireAdmin(req, res, next) {
   res.status(403).json({ error: 'Admins only' });
 }
 
+// Production users (technicians / production managers) may only make these
+// requests; everything else under /api is refused. Row-level limits (which
+// offers, which documents, which fields) are applied in routes/offers.js.
+const PRODUCTION_ALLOWED = [
+  ['GET', /^\/api\/me$/],
+  ['POST', /^\/api\/me\/password$/],
+  ['GET', /^\/api\/offers$/],
+  ['GET', /^\/api\/festivals$/],
+  ['GET', /^\/api\/offers\/\d+$/],
+  ['PUT', /^\/api\/offers\/\d+\/advance$/],
+  ['GET', /^\/api\/offers\/\d+\/advance-sheet\.pdf$/],
+  ['POST', /^\/api\/offers\/\d+\/documents$/],
+  ['GET', /^\/api\/documents\/\d+\/download$/],
+];
+function productionGate(req, res, next) {
+  if (req.user.role !== 'production' || !req.path.startsWith('/api/')) return next();
+  if (PRODUCTION_ALLOWED.some(([m, re]) => m === req.method && re.test(req.path))) return next();
+  res.status(403).json({ error: 'Production accounts can only use riders, stage plots and advance sheets' });
+}
+
 function hashPassword(pw) {
   if (!pw || String(pw).length < 8) throw Object.assign(new Error('Password must be at least 8 characters'), { status: 400 });
   return bcrypt.hashSync(String(pw), 12);
 }
 
-module.exports = { router, requireAuth, requireAdmin, hashPassword };
+module.exports = { router, requireAuth, requireAdmin, productionGate, hashPassword };

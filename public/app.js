@@ -66,8 +66,8 @@ async function initNav(active) {
   nav.innerHTML = `
     <a class="brand" href="/"><img src="/logo-white.png" alt="Phantizy Productions"></a>
     <div class="links">
-      <a href="/" class="${active === 'offers' ? 'active' : ''}">Offers</a>
-      <a href="/offer.html" class="${active === 'new' ? 'active' : ''}">+ New offer</a>
+      <a href="/" class="${active === 'offers' ? 'active' : ''}">${ME.role === 'production' ? 'Shows' : 'Offers'}</a>
+      ${ME.role === 'production' ? '' : `<a href="/offer.html" class="${active === 'new' ? 'active' : ''}">+ New offer</a>`}
       <a href="/admin.html" class="${active === 'admin' ? 'active' : ''}">${ME.role === 'admin' ? 'Settings' : 'Account'}</a>
       <span class="user">${esc(ME.name)}</span>
       <a href="#" id="logoutLink">Sign out</a>

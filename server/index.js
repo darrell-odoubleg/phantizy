@@ -47,6 +47,7 @@ app.use('/api', auth.router);
 
 // Everything below requires a signed-in user.
 app.use(auth.requireAuth);
+app.use(auth.productionGate);
 app.get('/api/me', (req, res) => res.json({ user: req.user }));
 app.use('/api', require('../routes/users'));
 app.use('/api', require('../routes/offers'));

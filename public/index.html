@@ -11,8 +11,8 @@
 <body>
 <div class="wrap">
   <div class="head-row">
-    <div><h1>Festival offers</h1><p class="subtitle">One offer per artist. Filter by festival to see a whole lineup.</p></div>
-    <a class="btn" href="/offer.html">+ New offer</a>
+    <div><h1 id="pageTitle">Festival offers</h1><p class="subtitle" id="pageSub">One offer per artist. Filter by festival to see a whole lineup.</p></div>
+    <a class="btn" href="/offer.html" id="newBtn">+ New offer</a>
   </div>
 
   <div class="card">
@@ -23,7 +23,7 @@
     <div class="filters" id="filters"></div>
     <div class="table-wrap">
       <table>
-        <thead><tr>
+        <thead><tr id="headRow">
           <th>Date</th><th>Artist</th><th class="hide-sm">Festival</th><th class="hide-sm">Guarantee</th>
           <th>Status</th><th class="hide-sm">Docs</th><th>Checklist</th>
         </tr></thead>
@@ -61,6 +61,15 @@ async function load() {
   if (q) params.set('q', q);
   const rows = await api('/offers?' + params);
   document.getElementById('empty').hidden = rows.length > 0 || q || status || festival;
+  if (PROD) {
+    document.getElementById('rows').innerHTML = rows.length ? rows.map(r => `<tr class="click" data-id="${r.id}">
+      <td>${esc(fmtDate(r.event_date)) || '<span style="color:var(--dim)">TBD</span>'}</td>
+      <td><strong>${esc(r.artist_name)}</strong>${slotLine(r) ? `<div style="font-size:12px;color:var(--dim)">${esc(slotLine(r))}</div>` : ''}</td>
+      <td class="hide-sm">${esc(r.festival_name || '')}</td>
+      <td><span class="pill ${r.rider_count ? '' : 'off'}">${r.rider_count ? r.rider_count + ' file' + (r.rider_count > 1 ? 's' : '') : 'None yet'}</span></td>
+    </tr>`).join('') : `<tr><td colspan="4" class="empty">${q || festival ? 'No shows match.' : 'No confirmed shows yet.'}</td></tr>`;
+    return;
+  }
   document.getElementById('rows').innerHTML = rows.length ? rows.map(r => {
     const pct = r.checklist_total ? Math.round(100 * r.checklist_done / r.checklist_total) : 0;
     return `<tr class="click" data-id="${r.id}">
@@ -76,7 +85,7 @@ async function load() {
 }
 document.getElementById('rows').onclick = (e) => {
   const tr = e.target.closest('tr[data-id]');
-  if (tr) location.href = '/offer.html?id=' + tr.dataset.id;
+  if (tr) location.href = '/offer.html?id=' + tr.dataset.id + (PROD ? '#advance' : '');
 };
 
 function slotLine(r) {
@@ -96,7 +105,22 @@ document.getElementById('festival').onchange = (e) => {
   load();
 };
 
-initNav('offers').then(async () => { renderFilters(); await loadFestivals(); load(); });
+let PROD = false;
+initNav('offers').then(async () => {
+  PROD = ME.role === 'production';
+  if (PROD) {
+    // Technicians / production managers: confirmed shows, riders & advance only.
+    status = '';
+    document.getElementById('pageTitle').textContent = 'Shows';
+    document.getElementById('pageSub').textContent = 'Confirmed shows: advance sheets, riders and stage plots.';
+    document.getElementById('newBtn').hidden = true;
+    document.getElementById('filters').hidden = true;
+    document.getElementById('q').placeholder = 'Search artist, festival, stage…';
+    document.getElementById('headRow').innerHTML = '<th>Date</th><th>Artist</th><th class="hide-sm">Festival</th><th>Riders / plots</th>';
+  } else renderFilters();
+  await loadFestivals();
+  load();
+});
 </script>
 </body>
 </html>

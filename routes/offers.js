@@ -8,7 +8,7 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db/init');
 const { requireAdmin } = require('../server/auth');
-const { OFFER_FIELDS, ADVANCE_FIELDS, STATUSES, DOC_KINDS } = require('../public/fields');
+const { OFFER_FIELDS, ADVANCE_FIELDS, STATUSES, DOC_KINDS, PRODUCTION_STATUSES, PRODUCTION_DOC_KINDS } = require('../public/fields');
 const { offerSheetPdf, advanceSheetPdf } = require('../server/pdf');
 
 const router = express.Router();
@@ -71,9 +71,20 @@ function getOffer(id) {
   return db.prepare('SELECT * FROM offers WHERE id = ?').get(id);
 }
 
+// Production users: no deal terms, agent or money — just what's needed to
+// advance the show.
+const PRODUCTION_OFFER_KEYS = ['id', 'status', 'artist_name', 'festival_name', 'festival_dates', 'festival_gates',
+  'festival_presenter', 'festival_contact', 'venue_name', 'venue_address', 'venue_city', 'venue_state', 'ages',
+  'event_date', 'stage', 'billing', 'show_time', 'set_length', 'changeover', 'production_provided',
+  'credentials', 'guest_list_offer', 'artist_parking', 'ground_transport'];
+const isProduction = (req) => req.user && req.user.role === 'production';
+const sqlList = (arr) => arr.map(s => `'${s}'`).join(',');
+
 function loadOffer(req, res, next) {
   const offer = getOffer(Number(req.params.id));
-  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+  if (!offer || (isProduction(req) && !PRODUCTION_STATUSES.includes(offer.status))) {
+    return res.status(404).json({ error: 'Offer not found' });
+  }
   req.offer = offer;
   next();
 }
@@ -85,6 +96,7 @@ router.get('/offers', (req, res) => {
   const where = [];
   const params = {};
   if (status && STATUSES.includes(status)) { where.push('o.status = @status'); params.status = status; }
+  if (isProduction(req)) where.push(`o.status IN (${sqlList(PRODUCTION_STATUSES)})`);
   if (festival) { where.push('o.festival_name = @festival'); params.festival = festival; }
   if (q) {
     where.push("(o.artist_name LIKE @q OR o.festival_name LIKE @q OR o.venue_name LIKE @q OR o.stage LIKE @q OR o.venue_city LIKE @q OR o.agency LIKE @q)");
@@ -100,12 +112,18 @@ router.get('/offers', (req, res) => {
     FROM offers o
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY (o.event_date IS NULL), o.event_date, o.show_time, o.id DESC`).all(params);
+  if (isProduction(req)) {
+    const keep = ['id', 'status', 'artist_name', 'festival_name', 'festival_dates', 'stage', 'billing', 'show_time',
+      'event_date', 'venue_name', 'venue_city', 'venue_state', 'rider_count'];
+    return res.json(rows.map(r => Object.fromEntries(keep.map(k => [k, r[k]]))));
+  }
   res.json(rows);
 });
 
 router.get('/festivals', (req, res) => {
+  const only = isProduction(req) ? `AND status IN (${sqlList(PRODUCTION_STATUSES)})` : '';
   res.json(db.prepare(`SELECT festival_name AS name, COUNT(*) AS offers, MIN(event_date) AS first_date
-    FROM offers WHERE festival_name IS NOT NULL GROUP BY festival_name ORDER BY (first_date IS NULL), first_date, name`).all());
+    FROM offers WHERE festival_name IS NOT NULL ${only} GROUP BY festival_name ORDER BY (first_date IS NULL), first_date, name`).all());
 });
 
 // Festival must come from the Settings list (an offer may keep a festival
@@ -142,10 +160,18 @@ router.post('/offers', (req, res) => {
 
 router.get('/offers/:id', loadOffer, (req, res) => {
   const id = req.offer.id;
+  const docs = db.prepare('SELECT id, kind, label, original_name, mime_type, size, uploaded_by_name, uploaded_at FROM documents WHERE offer_id = ? ORDER BY uploaded_at DESC').all(id);
+  if (isProduction(req)) {
+    return res.json({
+      offer: Object.fromEntries(PRODUCTION_OFFER_KEYS.map(k => [k, req.offer[k]])),
+      advance: db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(id) || {},
+      documents: docs.filter(d => PRODUCTION_DOC_KINDS.includes(d.kind)),
+    });
+  }
   res.json({
     offer: req.offer,
     advance: db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(id) || {},
-    documents: db.prepare('SELECT id, kind, label, original_name, mime_type, size, uploaded_by_name, uploaded_at FROM documents WHERE offer_id = ? ORDER BY uploaded_at DESC').all(id),
+    documents: docs,
     checklist: db.prepare('SELECT * FROM checklist_items WHERE offer_id = ? ORDER BY position, id').all(id),
   });
 });
@@ -213,6 +239,10 @@ router.post('/offers/:id/documents', loadOffer, upload.array('files', 10), (req,
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: 'Choose a file to upload' });
   const kind = DOC_KINDS[req.body.kind] ? req.body.kind : 'other';
+  if (isProduction(req) && !PRODUCTION_DOC_KINDS.includes(kind)) {
+    files.forEach(f => fs.rmSync(f.path, { force: true }));
+    return res.status(403).json({ error: 'Production accounts can upload riders and stage plots only' });
+  }
   const label = req.body.label ? String(req.body.label).slice(0, 200) : null;
   const ins = db.prepare(`INSERT INTO documents (offer_id, kind, label, original_name, stored_name, mime_type, size, uploaded_by_name)
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -225,6 +255,12 @@ router.post('/offers/:id/documents', loadOffer, upload.array('files', 10), (req,
 function loadDoc(req, res, next) {
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(Number(req.params.docId));
   if (!doc) return res.status(404).json({ error: 'File not found' });
+  if (isProduction(req)) {
+    const offer = getOffer(doc.offer_id);
+    if (!PRODUCTION_DOC_KINDS.includes(doc.kind) || !offer || !PRODUCTION_STATUSES.includes(offer.status)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+  }
   req.doc = doc;
   req.docPath = path.join(UPLOAD_DIR, String(doc.offer_id), path.basename(doc.stored_name));
   next();

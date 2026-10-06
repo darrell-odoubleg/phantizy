@@ -124,17 +124,18 @@ async function load() {
   $('#title').textContent = o.artist_name + (o.festival_name ? ' — ' + o.festival_name : '');
   $('#subtitle').textContent = [o.event_date && fmtDate(o.event_date), o.stage, o.venue_name,
     o.created_by_name && `Created by ${o.created_by_name}`].filter(Boolean).join('  ·  ');
-  $('#headActions').hidden = false;
   $('#tabs').hidden = false;
+  $('#advancePdf').href = `/api/offers/${id}/advance-sheet.pdf`;
+  if (!dirty.advance) renderSections($('#advanceForm'), PF.ADVANCE_SECTIONS, data.advance);
+  renderDocs();
+  if (PROD) return; // production: advance sheet + riders only
+  $('#headActions').hidden = false;
   $('#delBtn').hidden = ME.role !== 'admin';
   $('#status').innerHTML = PF.STATUSES.map(s => `<option value="${s}"${s === o.status ? ' selected' : ''}>${STATUS_LABEL[s]}</option>`).join('');
   $('#saveOffer').textContent = 'Save offer';
   $('#offerPdf').hidden = false;
   $('#offerPdf').href = `/api/offers/${id}/offer-sheet.pdf`;
-  $('#advancePdf').href = `/api/offers/${id}/advance-sheet.pdf`;
   if (!dirty.offer) renderSections($('#offerForm'), PF.OFFER_SECTIONS, o);
-  if (!dirty.advance) renderSections($('#advanceForm'), PF.ADVANCE_SECTIONS, data.advance);
-  renderDocs();
   renderChecklist();
 }
 
@@ -197,12 +198,16 @@ $('#saveAdvance').onclick = async () => {
 };
 
 // ---- documents ----
-$('#docKind').innerHTML = Object.entries(PF.DOC_KINDS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+function fillDocKinds() {
+  $('#docKind').innerHTML = Object.entries(PF.DOC_KINDS)
+    .filter(([k]) => !PROD || PF.PRODUCTION_DOC_KINDS.includes(k))
+    .map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+}
 
 function renderDocs() {
   const docs = data.documents;
   $('#docCount').textContent = docs.length;
-  if (!docs.length) { $('#docList').innerHTML = '<div class="empty">No contracts or riders uploaded yet.</div>'; return; }
+  if (!docs.length) { $('#docList').innerHTML = `<div class="empty">No ${PROD ? 'riders or stage plots' : 'contracts or riders'} uploaded yet.</div>`; return; }
   $('#docList').innerHTML = Object.entries(PF.DOC_KINDS).map(([kind, label]) => {
     const list = docs.filter(d => d.kind === kind);
     if (!list.length) return '';
@@ -213,7 +218,7 @@ function renderDocs() {
         <div class="btn-row">
           ${/^(application\/pdf|image\/(png|jpeg))$/.test(d.mime_type) ? `<a class="btn outline sm" target="_blank" href="/api/documents/${d.id}/download?view=1">View</a>` : ''}
           <a class="btn outline sm" href="/api/documents/${d.id}/download">Download</a>
-          <button class="icon-btn" title="Delete" data-del-doc="${d.id}">&times;</button>
+          ${PROD ? '' : `<button class="icon-btn" title="Delete" data-del-doc="${d.id}">&times;</button>`}
         </div>
       </div>`).join('')}</div>`;
   }).join('');
@@ -293,7 +298,27 @@ $('#clAdd').onsubmit = async (e) => {
 };
 
 // ---- boot ----
+let PROD = false;
 initNav(id ? 'offers' : 'new').then(async () => {
+  PROD = ME.role === 'production';
+  fillDocKinds();
+  if (PROD) {
+    if (!id) { location.replace('/'); return; }
+    // Technicians / production managers: no offer sheet, contracts or checklist.
+    document.querySelectorAll('#tabs [data-tab="offer"], #tabs [data-tab="checklist"]').forEach(b => b.remove());
+    document.querySelector('[data-panel="offer"]').remove();
+    document.querySelector('[data-panel="checklist"]').remove();
+    $('#tabs [data-tab="docs"]').firstChild.textContent = 'Riders & stage plots ';
+    try {
+      await load();
+      showTab(location.hash.slice(1) === 'docs' ? 'docs' : 'advance');
+    } catch (e) {
+      $('#title').textContent = 'Show not found';
+      $('#subtitle').innerHTML = '<a href="/">Back to shows</a>';
+      document.querySelectorAll('.tab-panel').forEach(p => p.hidden = true);
+    }
+    return;
+  }
   await loadFieldOptions(PF.OFFER_SECTIONS);
   if (!id) {
     if (fromId) {

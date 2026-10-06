@@ -146,6 +146,12 @@
 
   const STATUSES = ['draft', 'sent', 'accepted', 'declined', 'cancelled', 'completed'];
 
+  // Production role (technicians / production managers): sees only these
+  // statuses, these document kinds, and the advance sheet.
+  const ROLES = { admin: 'Admin', staff: 'Staff', production: 'Production' };
+  const PRODUCTION_STATUSES = ['accepted', 'completed'];
+  const PRODUCTION_DOC_KINDS = ['rider_technical', 'rider_hospitality', 'stage_plot'];
+
   const DOC_KINDS = {
     contract: 'Contract',
     rider_technical: 'Technical rider',
@@ -156,7 +162,7 @@
 
   const flat = (sections) => sections.flatMap(s => s.fields);
   const api = {
-    OFFER_SECTIONS, ADVANCE_SECTIONS, STATUSES, DOC_KINDS,
+    OFFER_SECTIONS, ADVANCE_SECTIONS, STATUSES, DOC_KINDS, ROLES, PRODUCTION_STATUSES, PRODUCTION_DOC_KINDS,
     OFFER_FIELDS: flat(OFFER_SECTIONS),
     ADVANCE_FIELDS: flat(ADVANCE_SECTIONS),
   };
