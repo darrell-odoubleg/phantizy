@@ -46,7 +46,7 @@
     <div class="savebar">
       <button class="btn" id="saveAdvance">Save advance</button>
       <a class="btn outline" id="advancePdf" target="_blank">Advance sheet PDF</a>
-      <a class="btn outline" id="welcomePdf" target="_blank">Welcome letter PDF</a>
+      <a class="btn outline" id="welcomePdf" target="_blank">Welcome package PDF</a>
       <button class="btn outline" id="welcomeBtn">Email welcome package</button>
       <span class="msg" id="advanceMsg"></span>
     </div>
@@ -98,8 +98,8 @@
   <form method="dialog" id="welcomeSendForm" novalidate>
     <div class="mbody">
       <h2>Email welcome package</h2>
-      <p class="subtitle" style="margin-bottom:14px">Sends the welcome letter and the files below<span id="wFrom"></span>.</p>
-      <div class="note-box warn" id="wNotConfigured" hidden>Email isn't set up on the server yet, so this can't be sent. Download the <a id="wPdfLink" target="_blank">welcome letter PDF</a> and attach it to your own email for now.</div>
+      <p class="subtitle" style="margin-bottom:14px">Sends one PDF: the welcome letter followed by the ticked files<span id="wFrom"></span>.</p>
+      <div class="note-box warn" id="wNotConfigured" hidden>Email isn't set up on the server yet, so this can't be sent. Download the <a id="wPdfLink" target="_blank">welcome package PDF</a> and attach it to your own email for now.</div>
       <div class="note-box" id="wNoText" hidden>This festival has no welcome package text yet, so the letter will only have the show details. An admin can add it in Settings → Festivals → Details &amp; welcome.</div>
       <label for="wTo">To (tour manager)</label>
       <input type="text" id="wTo" placeholder="tm@example.com" autocomplete="off">
@@ -109,9 +109,9 @@
       <input type="text" id="wSubject">
       <label for="wMessage">Message</label>
       <textarea id="wMessage" rows="10"></textarea>
-      <label>Attachments</label>
+      <label>Included in the PDF</label>
       <div id="wAtts" class="att-list"></div>
-      <label class="check-inline"><input type="checkbox" id="wAttachAdvance"> Also attach the advance sheet PDF</label>
+      <label class="check-inline"><input type="checkbox" id="wAttachAdvance"> Also include the advance sheet</label>
     </div>
     <div class="mfoot">
       <button type="button" class="btn outline" id="wCancel">Cancel</button>
@@ -284,7 +284,7 @@ function renderAtts() {
   const hasRos = WATTS.some(a => a.kind === 'run_of_show');
   $('#wAtts').innerHTML = `<div class="att-row"><input type="checkbox" checked disabled> <span class="pill">Letter</span> Welcome letter (PDF)</div>`
     + WATTS.map(a => `<label class="att-row"><input type="checkbox" data-att="${a.source}:${a.id}" data-size="${a.size || 0}" checked>
-        <span class="pill">${esc(a.label)}</span> ${esc(a.name)} <span class="meta">${fmtSize(a.size || 0)}</span></label>`).join('')
+        <span class="pill">${esc(a.label)}</span> ${esc(a.name)}${a.mergeable ? '' : ' <em class="sep-note">attached separately (Word/Excel can\'t be combined)</em>'} <span class="meta">${fmtSize(a.size || 0)}</span></label>`).join('')
     + (hasRos ? '' : `<div class="att-hint">No run of show uploaded for this show yet. Upload one on the ${ROLE === 'production' ? 'Riders &amp; stage plots' : 'Contracts &amp; riders'} tab (type: Run of show).</div>`)
     + '<div class="att-total" id="wAttTotal"></div>';
   attTotal();
@@ -292,7 +292,7 @@ function renderAtts() {
 function attTotal() {
   const bytes = [...document.querySelectorAll('#wAtts [data-att]:checked')].reduce((n, el) => n + Number(el.dataset.size), 0);
   const over = bytes > 20 * 1024 * 1024;
-  $('#wAttTotal').innerHTML = `Attachments: ${fmtSize(bytes)} plus the letter${over ? ' · <strong>over 20 MB, most mail servers will reject this. Untick some files.</strong>' : ''}`;
+  $('#wAttTotal').innerHTML = `Files: about ${fmtSize(bytes)} plus the letter${over ? ' · <strong>over 20 MB, most mail servers will reject this. Untick some files.</strong>' : ''}`;
   $('#wAttTotal').classList.toggle('over', over);
 }
 $('#wAtts').addEventListener('change', attTotal);

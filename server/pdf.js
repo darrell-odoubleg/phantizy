@@ -122,7 +122,9 @@ function section(doc, title, fields, data) {
   doc.y = y + 8;
 }
 
-function footer(doc, label) {
+// totalPages: page count of the finished document when more pages get merged
+// in after this one (welcome package); defaults to this PDF's own pages.
+function footer(doc, label, totalPages) {
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
     doc.switchToPage(range.start + i);
@@ -132,7 +134,7 @@ function footer(doc, label) {
     doc.page.margins.bottom = 0; // allow writing in the margin without a page break
     doc.font('Helvetica').fontSize(7.5).fillColor(DIM)
       .text(`${COMPANY().name} · ${label}`, left, bottom, { width, align: 'left', lineBreak: false })
-      .text(`Page ${i + 1} of ${range.count}`, left, bottom, { width, align: 'right', lineBreak: false });
+      .text(`Page ${i + 1} of ${totalPages || range.count}`, left, bottom, { width, align: 'right', lineBreak: false });
   }
 }
 
@@ -204,7 +206,9 @@ function welcomeVars(offer, advance, welcome) {
 // Welcome package letter to the tour manager: festival-wide text (Settings →
 // Festivals → Welcome package) plus this show's details from the offer and
 // advance sheet. No money or deal terms.
-function welcomeLetterPdf(offer, advance, welcome, out, enclosures = []) {
+// contents: [{ label, page }] for files merged after the letter;
+// separate: names of files attached to the email on their own.
+function welcomeLetterPdf(offer, advance, welcome, out, contents = [], separate = [], totalPages = 0) {
   const doc = newDoc(out);
   const left = doc.page.margins.left;
   const width = doc.page.width - left * 2;
@@ -276,15 +280,27 @@ function welcomeLetterPdf(offer, advance, welcome, out, enclosures = []) {
   para(fillTemplate(welcome.closing, vars));
   para(welcome.signoff ? fillTemplate(welcome.signoff, vars) : COMPANY().name, { bold: true });
 
-  if (enclosures.length) {
-    ensure(doc, 30 + enclosures.length * 14);
+  if (contents.length) {
+    ensure(doc, 30 + contents.length * 15);
     doc.moveDown(0.4);
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(DIM).text('ENCLOSED', left, doc.y, { characterSpacing: 1 });
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(DIM).text('INCLUDED IN THIS PACKAGE', left, doc.y, { characterSpacing: 1 });
+    doc.moveDown(0.2);
+    for (const c of contents) {
+      const y = doc.y;
+      doc.font('Helvetica').fontSize(10).fillColor(INK).text('•  ' + c.label, left + 4, y, { width: width - 80, lineBreak: false });
+      doc.fillColor(DIM).text(c.page ? `page ${c.page}` : '', left, y, { width, align: 'right', lineBreak: false });
+      doc.y = y + 15;
+    }
+  }
+  if (separate.length) {
+    ensure(doc, 24 + separate.length * 14);
+    doc.moveDown(0.4);
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(DIM).text('ATTACHED SEPARATELY', left, doc.y, { characterSpacing: 1 });
     doc.font('Helvetica').fontSize(10).fillColor(INK);
-    for (const e of enclosures) doc.text('•  ' + e, left + 4, doc.y, { width: width - 4 });
+    for (const n of separate) doc.text('•  ' + n, left + 4, doc.y, { width: width - 4 });
   }
 
-  footer(doc, `Welcome package · ${offer.artist_name || ''}`);
+  footer(doc, `Welcome package · ${offer.artist_name || ''}`, totalPages);
   doc.end();
 }
 

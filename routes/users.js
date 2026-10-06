@@ -159,6 +159,12 @@ router.post('/festival-options/:id/files', requireAdmin, (req, res, next) => {
 }, festivalUpload.array('files', 10), (req, res) => {
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: 'Choose a file to upload' });
+  // Welcome attachments are merged into one PDF, so only PDF / PNG / JPEG.
+  const bad = files.filter(f => !/\.(pdf|png|jpe?g)$/i.test(f.originalname));
+  if (bad.length) {
+    files.forEach(f => fs.rmSync(f.path, { force: true }));
+    return res.status(400).json({ error: `Welcome attachments must be PDF, PNG or JPEG so they can be combined into one PDF (${bad.map(f => f.originalname).join(', ')}). Save it as a PDF and upload again.` });
+  }
   const kind = WELCOME_FILE_KINDS[req.body.kind] ? req.body.kind : 'other';
   const ins = db.prepare(`INSERT INTO festival_files (festival_id, kind, original_name, stored_name, mime_type, size, uploaded_by_name)
                           VALUES (?, ?, ?, ?, ?, ?, ?)`);

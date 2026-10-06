@@ -10,6 +10,7 @@ const { requireAdmin } = require('../server/auth');
 const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS, WELCOME_FILE_KINDS } = require('../public/fields');
 const { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, fillTemplate, welcomeVars } = require('../server/pdf');
 const mailer = require('../server/mailer');
+const pdfMerge = require('../server/pdfMerge');
 const { PassThrough } = require('stream');
 
 const router = express.Router();
@@ -265,8 +266,38 @@ function welcomeAttachments(offer) {
   fest.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
   return [...fest, ...ros];
 }
-const publicAttachment = ({ path: _p, ...a }) => a;
-const enclosureNames = (atts) => atts.map(a => a.label === 'Other' ? a.name : a.label);
+const publicAttachment = ({ path: _p, ...a }) => ({ ...a, mergeable: pdfMerge.canMerge(a) });
+
+// One PDF: the letter (with a numbered contents list), then every mergeable
+// attachment, then the advance sheet if asked for. Returns the PDF plus any
+// files that couldn't be merged (sent as separate attachments).
+async function buildWelcomePackage(offer, files, includeAdvance) {
+  const adv = getAdvance(offer.id);
+  const welcome = festivalWelcome(offer);
+  for (const f of files) {
+    if (!fs.existsSync(f.path)) throw Object.assign(new Error(`"${f.name}" is missing on the server; re-upload it`), { status: 409 });
+  }
+  const { parts, separate } = await pdfMerge.prepare(files);
+  if (includeAdvance) {
+    const advBytes = await pdfBuffer(out => advanceSheetPdf(offer, adv, out));
+    const { PDFDocument } = require('pdf-lib');
+    const pdf = await PDFDocument.load(advBytes);
+    parts.push({ att: { label: 'Advance sheet', name: 'Advance sheet' }, pdf, pages: pdf.getPageCount() });
+  }
+  const sepNames = separate.map(a => a.name);
+  // Render the letter, count its pages, then render again with page numbers
+  // (re-run once more in the rare case the numbered list changes the length).
+  let letterPages = 1, letter;
+  for (let i = 0; i < 3; i++) {
+    const contents = pdfMerge.contents(parts, letterPages);
+    const total = letterPages + parts.reduce((n, p) => n + p.pages, 0);
+    letter = await pdfBuffer(out => welcomeLetterPdf(offer, adv, welcome, out, contents, sepNames, total));
+    const n = await pdfMerge.pageCount(letter);
+    if (n === letterPages) break;
+    letterPages = n;
+  }
+  return { pdf: await pdfMerge.merge(letter, parts), separate };
+}
 
 function getAdvance(offerId) {
   return db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(offerId) || {};
@@ -291,9 +322,17 @@ function emailList(v, label, required) {
   return list;
 }
 
-router.get('/offers/:id/welcome.pdf', loadOffer, (req, res) => {
-  const enclosures = enclosureNames(welcomeAttachments(req.offer));
-  sendPdf(res, pdfName(req.offer, 'Welcome Package'), out => welcomeLetterPdf(req.offer, getAdvance(req.offer.id), festivalWelcome(req.offer), out, enclosures));
+// Short on purpose: long attachment names get folded across header lines.
+const welcomeFileName = (offer) => `Welcome Package - ${offer.artist_name || 'Artist'}.pdf`.replace(/[^\w.\- ]+/g, '');
+
+// The full combined package (letter + all attachments) for download.
+router.get('/offers/:id/welcome.pdf', loadOffer, async (req, res, next) => {
+  try {
+    const { pdf } = await buildWelcomePackage(req.offer, welcomeAttachments(req.offer), false);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${welcomeFileName(req.offer).replace(/[^\w.\- ]+/g, '')}"`);
+    res.send(pdf);
+  } catch (err) { next(err); }
 });
 
 // Draft of the email (editable in the browser) plus send history.
@@ -339,27 +378,19 @@ router.post('/offers/:id/welcome/send', loadOffer, async (req, res, next) => {
     const subject = String(b.subject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 250);
     const text = String(b.message || '').slice(0, 20000);
     if (!subject) throw Object.assign(new Error('Subject is required'), { status: 400 });
-    const adv = getAdvance(req.offer.id);
-    // Only files that belong to this festival / this show can be attached.
+    // Only files that belong to this festival / this show can be included.
     const wanted = new Set((Array.isArray(b.attach) ? b.attach : []).map(String));
     const files = welcomeAttachments(req.offer).filter(a => wanted.has(`${a.source}:${a.id}`));
-    const total = files.reduce((n, f) => n + (f.size || 0), 0);
-    if (total > 20 * 1024 * 1024) throw Object.assign(new Error('Attachments are over 20 MB, which most mail servers reject. Untick some files.'), { status: 400 });
+    const { pdf, separate } = await buildWelcomePackage(req.offer, files, !!b.attach_advance);
     const attachments = [{
-      filename: pdfName(req.offer, 'Welcome Package').replace(/[^\w.\- ]+/g, ''),
-      content: await pdfBuffer(out => welcomeLetterPdf(req.offer, adv, festivalWelcome(req.offer), out, enclosureNames(files))),
+      filename: welcomeFileName(req.offer).replace(/[^\w.\- ]+/g, ''),
+      content: pdf,
       contentType: 'application/pdf',
     }];
-    for (const f of files) {
-      if (!fs.existsSync(f.path)) throw Object.assign(new Error(`"${f.name}" is missing on the server; re-upload it`), { status: 409 });
-      attachments.push({ filename: f.name, content: fs.readFileSync(f.path), contentType: f.mime || undefined });
-    }
-    if (b.attach_advance) {
-      attachments.push({
-        filename: pdfName(req.offer, 'Advance').replace(/[^\w.\- ]+/g, ''),
-        content: await pdfBuffer(out => advanceSheetPdf(req.offer, adv, out)),
-        contentType: 'application/pdf',
-      });
+    for (const f of separate) attachments.push({ filename: f.name, content: fs.readFileSync(f.path), contentType: f.mime || undefined });
+    const total = attachments.reduce((n, a) => n + a.content.length, 0);
+    if (total > 20 * 1024 * 1024) {
+      throw Object.assign(new Error(`The package is ${(total / 1048576).toFixed(1)} MB; most mail servers reject emails over 20 MB. Untick some files.`), { status: 400 });
     }
     await mailer.sendMail({ to, cc, replyTo: req.user.email, subject, text, attachments });
     db.prepare(`INSERT INTO email_log (offer_id, kind, to_addr, cc_addr, subject, sent_by_name)
