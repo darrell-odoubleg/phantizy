@@ -26,7 +26,27 @@ function toast(msg, isErr) {
 
 const STATUS_LABEL = { draft: 'Draft', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', cancelled: 'Cancelled', completed: 'Completed' };
 const badge = (s) => `<span class="badge badge-${esc(s)}">${esc(STATUS_LABEL[s] || s)}</span>`;
-const money = (v) => (v === null || v === undefined || v === '') ? '' : '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
+// "$45,000" for whole dollars, "$45,000.50" when there are cents.
+function money(v) {
+  if (v === null || v === undefined || v === '' || !isFinite(Number(v))) return '';
+  const n = Number(v);
+  const cents = Math.round(n * 100) % 100 !== 0;
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: 2 });
+}
+// Accepts "45000", "$45,000", "45,000.50"; returns a number, null if blank, NaN if not money.
+function parseMoney(s) {
+  const t = String(s ?? '').replace(/[$,\s]/g, '');
+  if (!t) return null;
+  return /^\d+(\.\d{0,2})?$/.test(t) ? Number(t) : NaN;
+}
+// Money inputs reformat when you leave them ($ and thousands commas).
+document.addEventListener('focusout', (e) => {
+  const el = e.target;
+  if (!el.matches || !el.matches('input[data-money]')) return;
+  const n = parseMoney(el.value);
+  el.classList.toggle('invalid', Number.isNaN(n));
+  if (n !== null && !Number.isNaN(n)) el.value = money(n);
+});
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00');
@@ -102,10 +122,11 @@ function fieldHtml(f, value) {
     const opts = f.options.includes(v) || !v ? f.options : [v, ...f.options];
     input = `<select id="${id}" name="${f.key}"><option value=""></option>${opts.map(o => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   } else {
-    const type = f.type === 'money' ? 'number' : (f.type || 'text');
-    const extra = f.type === 'money' ? ' step="0.01" min="0" inputmode="decimal"' : f.type === 'number' ? ' step="any"' : '';
+    const type = f.type === 'money' ? 'text' : (f.type || 'text');
+    const extra = f.type === 'money' ? ' data-money inputmode="decimal" placeholder="$0"' : f.type === 'number' ? ' step="any"' : '';
     const ph = f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : '';
-    input = `<input type="${type}" id="${id}" name="${f.key}" value="${esc(v)}"${extra}${ph}${f.required ? ' required' : ''}>`;
+    const shown = f.type === 'money' ? money(v) : v;
+    input = `<input type="${type}" id="${id}" name="${f.key}" value="${esc(shown)}"${extra}${ph}${f.required ? ' required' : ''}>`;
   }
   return `<div class="${cls}">${lbl}${input}</div>`;
 }
@@ -114,7 +135,12 @@ function readSections(container, sections) {
   const out = {};
   for (const s of sections) for (const f of s.fields) {
     const el = container.querySelector(`[name="${f.key}"]`);
-    if (el) out[f.key] = el.value.trim();
+    if (!el) continue;
+    if (f.type === 'money') {
+      const n = parseMoney(el.value);
+      if (Number.isNaN(n)) { el.classList.add('invalid'); el.focus(); throw new Error(`${f.label}: enter a dollar amount like $45,000`); }
+      out[f.key] = n === null ? '' : String(n);
+    } else out[f.key] = el.value.trim();
   }
   return out;
 }

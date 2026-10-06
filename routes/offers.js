@@ -43,8 +43,11 @@ function pick(body, fields) {
     let v = body[f.key];
     if (v === '' || v === undefined) v = null;
     else if (f.type === 'number' || f.type === 'money') {
-      v = Number(String(v).replace(/[$,]/g, ''));
-      if (!isFinite(v)) v = null;
+      const raw = String(v).replace(/[$,\s]/g, '');
+      v = raw === '' ? null : Number(raw);
+      if (v !== null && !isFinite(v)) {
+        throw Object.assign(new Error(`${f.label}: "${body[f.key]}" isn't a number`), { status: 400 });
+      }
     } else v = String(v);
     out[f.key] = v;
   }

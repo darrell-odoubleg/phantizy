@@ -45,9 +45,9 @@
     ]},
     { title: 'Deal', fields: [
       { key: 'deal_type', label: 'Deal type', type: 'select', options: ['Flat guarantee', 'Guarantee plus bonus', 'Guarantee vs. % of net', 'Guarantee plus % of net'] },
-      { key: 'guarantee', label: 'Guarantee ($)', type: 'money' },
+      { key: 'guarantee', label: 'Guarantee', type: 'money' },
       { key: 'percentage', label: 'Back-end % (if any)', type: 'number' },
-      { key: 'deposit_amount', label: 'Deposit ($)', type: 'money' },
+      { key: 'deposit_amount', label: 'Deposit', type: 'money' },
       { key: 'deposit_due', label: 'Deposit due', type: 'date' },
       { key: 'balance_terms', label: 'Balance terms' },
       { key: 'deal_notes', label: 'Deal notes (bonuses, attendance kickers, expenses)', type: 'textarea', wide: true },

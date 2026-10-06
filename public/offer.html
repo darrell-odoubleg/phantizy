@@ -140,7 +140,8 @@ async function load() {
 
 // ---- offer ----
 $('#saveOffer').onclick = async () => {
-  const body = readSections($('#offerForm'), PF.OFFER_SECTIONS);
+  let body;
+  try { body = readSections($('#offerForm'), PF.OFFER_SECTIONS); } catch (e) { toast(e.message, true); return; }
   if (!body.festival_name) { toast('Festival is required', true); $('#f_festival_name').focus(); return; }
   if (!body.artist_name) { toast('Artist is required', true); $('#f_artist_name').focus(); return; }
   $('#saveOffer').disabled = true;

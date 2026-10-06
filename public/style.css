@@ -39,6 +39,7 @@ label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.6px
 input[type=text],input[type=number],input[type=date],input[type=time],input[type=email],input[type=tel],input[type=password],input[type=search],select,textarea{
   width:100%;background:#fff;border:1px solid var(--line);color:var(--ink);padding:9px 10px;font:inherit;border-radius:5px;margin-bottom:14px;}
 textarea{resize:vertical;min-height:72px;}
+input.invalid{border-color:var(--danger);background:#fdf3f3;}
 input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent;}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 16px;}
 .grid .wide{grid-column:1/-1;}
