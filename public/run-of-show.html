@@ -13,7 +13,7 @@
   <div class="head-row">
     <div>
       <h1>Run of show</h1>
-      <p class="subtitle">Each stage, each day. Accepted acts fill in from their advance sheets (Set time – Set ends), with changeovers between them. Each act's welcome package includes its stage's run of show.</p>
+      <p class="subtitle">Each stage, each day. Accepted acts fill in from their advance sheets (Performance start – stop), with changeovers between them. Each act's welcome package includes its stage's run of show.</p>
     </div>
     <select id="festSel" style="width:auto;margin:0" hidden></select>
   </div>
@@ -101,7 +101,7 @@ function render() {
           <button class="btn outline sm" data-up ${attrs}>${file ? 'Replace file' : 'Upload a file instead'}</button>
         </div>
       </div>
-      ${(t.overlaps || []).map(([a, b]) => `<div class="note-box warn">${esc(a)} and ${esc(b)} overlap: check their Set time / Set ends on the advance sheets.</div>`).join('')}
+      ${(t.overlaps || []).map(([a, b]) => `<div class="note-box warn">${esc(a)} and ${esc(b)} overlap: check their Performance start / stop on the advance sheets.</div>`).join('')}
       ${t.rows.length ? `<div class="table-wrap"><table class="ros-view">
         <thead><tr><th>Item</th><th>Stage Setup</th><th>Performance Time</th><th>Duration</th></tr></thead>
         <tbody>${t.rows.map(r => `<tr class="${r.co ? 'co-row' : r.offer_id ? 'act-row' : r.fixed ? 'fixed-row' : ''}">
@@ -153,7 +153,7 @@ function renderRosRows() {
     }
     if (r.li) {
       return `<tr data-i="${i}" class="artist-row">
-        <td>${esc(r.item)} <span class="pill" title="Load in / stage arrival from the advance sheet">from advance</span></td>
+        <td>${esc(r.item)} <span class="pill" title="Load in from the advance sheet">from advance</span></td>
         <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="e.g. Backline to stage"></td>
         <td>${esc(fmtT(r.time))}</td><td></td><td></td>
         <td><a class="meta" href="/offer.html?id=${r.li}#advance" target="_blank" title="Change the load in time on the advance sheet">edit time</a></td>
@@ -163,8 +163,8 @@ function renderRosRows() {
       return `<tr data-i="${i}" class="${r.co ? 'co-row' : 'artist-row'}">
         <td>${r.co ? 'Changeover' : `<strong>${esc(r.item)}</strong>`} <span class="pill" title="${r.co ? 'Between the previous set end and the next set start' : 'From the offer and its advance sheet'}">${r.co ? 'auto' : 'from advance'}</span></td>
         <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="${r.co ? 'e.g. Line check' : 'e.g. Full production'}"></td>
-        <td>${esc(fmtT(r.time)) || '<span class="meta">set time?</span>'}</td>
-        <td>${esc(fmtT(r.end)) || '<span class="meta">set ends?</span>'}</td>
+        <td>${esc(fmtT(r.time)) || '<span class="meta">start?</span>'}</td>
+        <td>${esc(fmtT(r.end)) || '<span class="meta">stop?</span>'}</td>
         <td>${esc(r.duration)}</td>
         <td>${r.offer_id ? `<a class="meta" href="/offer.html?id=${r.offer_id}#advance" target="_blank" title="Change times on the advance sheet">edit times</a>` : ''}</td>
       </tr>`;

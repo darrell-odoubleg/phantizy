@@ -1,7 +1,7 @@
 // ros.js
 // Run of show rows for one festival stage on one day. Artist rows come from
 // the offers booked on that stage + date (accepted/completed only), timed
-// from their advance sheet: Performance time = Set time – Set ends (falling
+// from their advance sheet: Performance time = Performance start – stop (falling
 // back to the offer's set time + set length). Stored rows add the Stage Setup
 // text for artist rows (matched by offer_id) and any manual rows (gates,
 // curfew, meet & greets). A Changeover row is added automatically between

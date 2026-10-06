@@ -249,8 +249,8 @@ function welcomeLetterPdf(offer, advance, welcome, out, contents = [], separate 
     { key: 'venue_address', label: 'Site address', wide: true },
   ], show);
   section(doc, 'Your Advance', [
-    { key: 'artist_checkin_time', label: 'Artist check-in', type: 'time' },
-    { key: 'load_in_time', label: 'Load in / stage arrival', type: 'time' },
+    { key: 'artist_checkin_time', label: 'Artist arrival', type: 'time' },
+    { key: 'load_in_time', label: 'Load in', type: 'time' },
     { key: 'soundcheck_time', label: 'Line check', type: 'time' },
     { key: 'curfew', label: 'Stage curfew', type: 'time' },
     { key: 'credential_pickup', label: 'Credential pickup' },
