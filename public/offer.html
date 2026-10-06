@@ -86,7 +86,7 @@
         <input type="text" id="clNew" placeholder="Add a task for this show…">
         <button class="btn sm">Add</button>
       </form>
-      <p style="font-size:12px;color:var(--dim);margin:12px 0 0">Items tagged <span class="auto">auto</span> tick themselves when the status changes, a contract, rider, W-9 or insurance certificate is uploaded, or a payment date is entered. Admins can change the default list in Settings.</p>
+      <p style="font-size:12px;color:var(--dim);margin:12px 0 0">Items tagged <span class="auto">auto</span> tick themselves when the status changes, a contract, FEC contract, rider, W-9 or insurance certificate is uploaded, or a payment date is entered. Admins can change the default list in Settings.</p>
     </div>
   </section>
 </div>
@@ -352,7 +352,7 @@ $('#clAdd').onsubmit = async (e) => {
 // Restricted roles get a subset of tabs (the server enforces the same limits).
 const ROLE_VIEW = {
   production: { tabs: ['advance', 'docs'], start: 'advance', docsLabel: 'Riders & stage plots', noun: 'riders or stage plots' },
-  accounting: { tabs: ['payments', 'offer', 'docs'], start: 'payments', docsLabel: 'W-9 & insurance', noun: 'W-9s or insurance certificates' },
+  accounting: { tabs: ['payments', 'offer', 'docs'], start: 'payments', docsLabel: 'Documents', noun: 'FEC contracts, W-9s or insurance certificates' },
 };
 let ROLE = null;
 let DOCS_NOUN = 'contracts or riders';

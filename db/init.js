@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_offer ON documents(offer_id);
 
 -- auto_key ties an item to an event that checks it off automatically:
--- status_sent, status_accepted, doc_contract, doc_rider, doc_w9, doc_coi,
+-- status_sent, status_accepted, doc_contract, doc_fec, doc_rider, doc_w9, doc_coi,
 -- pay_deposit, pay_settlement, pay_balance (status_completed: older rows).
 -- Festivals offered in the Festival dropdown (managed in Settings).
 CREATE TABLE IF NOT EXISTS festivals (
@@ -134,6 +134,7 @@ const DEFAULT_CHECKLIST = [
   ['Offer accepted', 'status_accepted'],
   ['Contract received from agency', null],
   ['Signed contract uploaded', 'doc_contract'],
+  ['FEC contract received', 'doc_fec'],
   ['Deposit paid', 'pay_deposit'],
   ['W-9 received', 'doc_w9'],
   ['Certificate of insurance received', 'doc_coi'],
