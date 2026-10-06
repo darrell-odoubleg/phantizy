@@ -13,13 +13,16 @@
 const db = require('../db/init');
 const { RESTRICTED_STATUSES } = require('../public/fields');
 
-// Fixed rows per festival: on every stage, every festival day.
+// Fixed rows per festival: on every stage, every festival day (or only the
+// weekdays in `days`, 0 = Sunday … 6 = Saturday).
 const FIXED_ROWS = [{
   match: /rock the locks/i,
   rows: [
     { item: 'Catered Breakfast', time: '08:00', end: '11:00' },
     { item: 'Catered Lunch', time: '12:00', end: '15:00' },
     { item: 'Catered Dinner', time: '17:00', end: '20:00' },
+    { item: 'Catered After Show Meals', time: '21:00', end: '00:00', days: [5, 6] },
+    { item: 'Catered After Show Meals', time: '21:00', end: '22:30', days: [0] },
   ],
 }];
 
@@ -79,8 +82,10 @@ function runOfShowRows(festivalName, stage, day) {
     item: r.item || '', setup: r.setup || '', time: r.time || '', end: r.end || '',
     duration: r.duration || durationText(r.time, r.end),
   }));
+  const weekday = new Date(day + 'T00:00:00').getDay();
   const fixedRows = ((FIXED_ROWS.find(f => f.match.test(festivalName || '')) || {}).rows || [])
-    .map(r => ({ ...r, setup: '', duration: durationText(r.time, r.end), fixed: true }));
+    .filter(r => !r.days || r.days.includes(weekday))
+    .map(({ days, ...r }) => ({ ...r, setup: '', duration: durationText(r.time, r.end), fixed: true }));
   // Changeovers between consecutive acts (in set-time order).
   const timed = artistRows.filter(r => toMin(r.time) !== null).sort((a, b) => toMin(a.time) - toMin(b.time));
   const changeovers = [], overlaps = [];
