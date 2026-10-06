@@ -11,7 +11,7 @@
   // when adding another artist to the same festival.
   const OFFER_SECTIONS = [
     { title: 'Festival', festivalWide: true, fields: [
-      { key: 'festival_name', label: 'Festival', required: true },
+      { key: 'festival_name', label: 'Festival', required: true, type: 'select', options: [], optionsFrom: 'festivals', span2: true }, // options filled from Settings → Festivals
       { key: 'festival_dates', label: 'Festival dates', placeholder: 'e.g. June 12–14, 2027' },
       { key: 'venue_name', label: 'Festival site / grounds' },
       { key: 'venue_address', label: 'Site address' },

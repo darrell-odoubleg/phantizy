@@ -61,6 +61,14 @@ async function initNav(active) {
   return ME;
 }
 
+// Fills select fields whose options live in the database (optionsFrom).
+async function loadFieldOptions(sections) {
+  const fields = sections.flatMap(s => s.fields).filter(f => f.optionsFrom === 'festivals');
+  if (!fields.length) return;
+  const names = (await api('/festival-options')).map(f => f.name);
+  fields.forEach(f => { f.options = names; });
+}
+
 // Renders sections from fields.js as cards of inputs named by field key.
 function renderSections(container, sections, data = {}) {
   container.innerHTML = sections.map(s => `
@@ -72,7 +80,7 @@ function renderSections(container, sections, data = {}) {
 function fieldHtml(f, value) {
   const v = value ?? '';
   const id = 'f_' + f.key;
-  const cls = (f.wide || f.type === 'textarea') ? 'wide' : '';
+  const cls = (f.wide || f.type === 'textarea') ? 'wide' : f.span2 ? 'span2' : '';
   const lbl = `<label for="${id}" class="${f.required ? 'req' : ''}">${esc(f.label)}</label>`;
   let input;
   if (f.type === 'textarea') input = `<textarea id="${id}" name="${f.key}">${esc(v)}</textarea>`;

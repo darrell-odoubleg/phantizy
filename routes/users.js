@@ -54,6 +54,48 @@ router.patch('/users/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- festivals (Festival dropdown) ----
+
+router.get('/festival-options', (req, res) => {
+  const all = req.query.all === '1' && req.user.role === 'admin';
+  res.json(db.prepare(`SELECT f.id, f.name, f.active,
+      (SELECT COUNT(*) FROM offers o WHERE o.festival_name = f.name) AS offers
+    FROM festivals f ${all ? '' : 'WHERE f.active = 1'} ORDER BY f.name`).all());
+});
+
+router.post('/festival-options', requireAdmin, (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim();
+  if (!name) return res.status(400).json({ error: 'Festival name is required' });
+  try {
+    res.json({ id: db.prepare('INSERT INTO festivals (name) VALUES (?)').run(name).lastInsertRowid });
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'That festival is already on the list' });
+    throw err;
+  }
+});
+
+// Rename (carried over to existing offers) or hide/show in the dropdown.
+router.patch('/festival-options/:id', requireAdmin, (req, res) => {
+  const fest = db.prepare('SELECT * FROM festivals WHERE id = ?').get(Number(req.params.id));
+  if (!fest) return res.status(404).json({ error: 'Festival not found' });
+  const { name, active } = req.body || {};
+  try {
+    db.transaction(() => {
+      if (name !== undefined) {
+        const n = String(name).trim();
+        if (!n) throw Object.assign(new Error('Festival name is required'), { status: 400 });
+        db.prepare('UPDATE festivals SET name = ? WHERE id = ?').run(n, fest.id);
+        db.prepare('UPDATE offers SET festival_name = ? WHERE festival_name = ?').run(n, fest.name);
+      }
+      if (active !== undefined) db.prepare('UPDATE festivals SET active = ? WHERE id = ?').run(active ? 1 : 0, fest.id);
+    })();
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'Another festival already has that name' });
+    throw err;
+  }
+  res.json({ ok: true });
+});
+
 router.get('/checklist-template', (req, res) => {
   res.json(db.prepare('SELECT id, label, auto_key FROM checklist_template ORDER BY position, id').all());
 });

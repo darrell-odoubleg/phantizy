@@ -288,6 +288,7 @@ $('#clAdd').onsubmit = async (e) => {
 
 // ---- boot ----
 initNav(id ? 'offers' : 'new').then(async () => {
+  await loadFieldOptions(PF.OFFER_SECTIONS);
   if (!id) {
     if (fromId) {
       // Prefill only the festival-wide sections from the source offer.
@@ -299,7 +300,12 @@ initNav(id ? 'offers' : 'new').then(async () => {
       $('#title').textContent = 'New artist — ' + (src.festival_name || 'festival');
       $('#subtitle').textContent = 'Festival details, radius, provisions and terms are copied in. Add the artist, slot and deal.';
       $('#f_artist_name').focus();
-    } else $('#f_festival_name').focus();
+    } else {
+      // Only one festival on the list? Pick it.
+      const opts = PF.OFFER_FIELDS.find(f => f.key === 'festival_name').options;
+      renderSections($('#offerForm'), PF.OFFER_SECTIONS, opts.length === 1 ? { festival_name: opts[0] } : {});
+      $(opts.length === 1 ? '#f_artist_name' : '#f_festival_name').focus();
+    }
     return;
   }
   try {

@@ -64,6 +64,14 @@ CREATE INDEX IF NOT EXISTS idx_documents_offer ON documents(offer_id);
 
 -- auto_key ties an item to an event that checks it off automatically:
 -- status_sent, status_accepted, doc_contract, doc_rider, status_completed.
+-- Festivals offered in the Festival dropdown (managed in Settings).
+CREATE TABLE IF NOT EXISTS festivals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS checklist_template (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   label TEXT NOT NULL,
@@ -119,6 +127,10 @@ const DEFAULT_CHECKLIST = [
 if (db.prepare('SELECT COUNT(*) AS n FROM checklist_template').get().n === 0) {
   const ins = db.prepare('INSERT INTO checklist_template (label, auto_key, position) VALUES (?, ?, ?)');
   db.transaction(() => DEFAULT_CHECKLIST.forEach(([label, key], i) => ins.run(label, key, i)))();
+}
+
+if (db.prepare('SELECT COUNT(*) AS n FROM festivals').get().n === 0) {
+  db.prepare('INSERT INTO festivals (name) VALUES (?)').run('Rock the Locks Music Festival');
 }
 
 module.exports = db;

@@ -105,6 +105,14 @@ router.get('/festivals', (req, res) => {
     FROM offers WHERE festival_name IS NOT NULL GROUP BY festival_name ORDER BY (first_date IS NULL), first_date, name`).all());
 });
 
+// Festival must come from the Settings list (an offer may keep a festival
+// that has since been hidden).
+function checkFestival(name, current) {
+  if (name === current) return null;
+  const ok = db.prepare('SELECT 1 FROM festivals WHERE name = ? AND active = 1').get(name);
+  return ok ? null : 'Pick a festival from the list (admins can add festivals in Settings)';
+}
+
 function createOffer(values, user) {
   return db.transaction(() => {
     const info = db.prepare('INSERT INTO offers (created_by, created_by_name) VALUES (?, ?)').run(user.id, user.name);
@@ -123,6 +131,8 @@ function createOffer(values, user) {
 router.post('/offers', (req, res) => {
   const values = pick(req.body || {}, OFFER_FIELDS);
   if (!values.festival_name) return res.status(400).json({ error: 'Festival is required' });
+  const festErr = checkFestival(values.festival_name);
+  if (festErr) return res.status(400).json({ error: festErr });
   if (!values.artist_name) return res.status(400).json({ error: 'Artist is required' });
   res.json({ id: createOffer(values, req.user) });
 });
@@ -141,6 +151,10 @@ router.put('/offers/:id', loadOffer, (req, res) => {
   const values = pick(req.body || {}, OFFER_FIELDS);
   if ('artist_name' in values && !values.artist_name) return res.status(400).json({ error: 'Artist is required' });
   if ('festival_name' in values && !values.festival_name) return res.status(400).json({ error: 'Festival is required' });
+  if ('festival_name' in values) {
+    const festErr = checkFestival(values.festival_name, req.offer.festival_name);
+    if (festErr) return res.status(400).json({ error: festErr });
+  }
   updateRow('offers', 'id', req.offer.id, values);
   res.json({ ok: true });
 });
