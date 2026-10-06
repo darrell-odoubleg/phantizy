@@ -105,10 +105,10 @@ function render() {
       </div>
       ${(t.overlaps || []).map(([a, b]) => `<div class="note-box warn">${esc(a)} and ${esc(b)} overlap: check their Performance start / stop on the advance sheets.</div>`).join('')}
       ${t.rows.length ? `<div class="table-wrap"><table class="ros-view">
-        <thead><tr><th>Item</th><th>Stage Setup</th><th>Performance Time</th><th>Duration</th></tr></thead>
+        <thead><tr><th>Item</th><th>Stage Setup</th><th>Load In Duration</th><th>Performance Time</th><th>Duration</th></tr></thead>
         <tbody>${t.rows.map(r => `<tr class="${r.co ? 'co-row' : r.offer_id ? 'act-row' : r.fixed ? 'fixed-row' : ''}">
           <td>${r.offer_id || r.li ? `<a href="/offer.html?id=${r.offer_id || r.li}#advance">${esc(r.item)}</a>` : esc(r.item)}</td>
-          <td>${esc(r.li ? [fmtT(r.time), r.setup].filter(Boolean).join(' – ') : r.setup)}</td><td class="nowrap">${r.li ? (earlyLoadIn(r) ? 'No music before 9:00AM!' : '') : esc(perfTime(r))}</td><td class="nowrap">${esc(r.duration)}</td></tr>`).join('')}</tbody>
+          <td>${esc(r.li ? [fmtT(r.time), r.setup].filter(Boolean).join(' – ') : r.setup)}</td><td class="nowrap">${esc(r.load_in_duration || '')}</td><td class="nowrap">${r.li ? (earlyLoadIn(r) ? 'No music before 9:00AM!' : '') : esc(perfTime(r))}</td><td class="nowrap">${esc(r.duration)}</td></tr>`).join('')}</tbody>
       </table></div>` : `<div class="empty">No rows yet. Acts appear here once their offers are accepted with this stage and date.</div>`}
       ${file ? `<div class="ros-file">Uploaded file: ${/^(application\/pdf|image\/(png|jpeg))$/.test(file.mime_type) ? `<a target="_blank" href="/api/festival-files/${file.id}/download?view=1">${esc(file.original_name)}</a>` : esc(file.original_name)}
         <span class="meta">${fmtSize(file.size)} · ${esc(file.uploaded_by_name || '')}${built ? ' · not sent, because the table above has rows' : ' · sent in welcome packages'}</span>
@@ -157,8 +157,8 @@ function renderRosRows() {
       return `<tr data-i="${i}" class="artist-row">
         <td>${esc(r.item)} <span class="pill" title="Load in from the advance sheet">from advance</span></td>
         <td class="nowrap">${esc(fmtT(r.time))} – <input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="optional note" style="width:auto"></td>
-        <td></td><td></td><td></td>
-        <td><a class="meta" href="/offer.html?id=${r.li}#advance" target="_blank" title="Change the load in time on the advance sheet">edit time</a></td>
+        <td></td><td></td><td>${esc(r.load_in_duration || '')}</td>
+        <td><a class="meta" href="/offer.html?id=${r.li}#advance" target="_blank" title="Change the load in time and duration on the advance sheet">edit time</a></td>
       </tr>`;
     }
     if (r.offer_id || r.co) {

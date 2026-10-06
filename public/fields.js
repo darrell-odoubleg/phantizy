@@ -129,6 +129,8 @@
       { key: 'doors_time', label: 'Gates open', type: 'time' },
       { key: 'artist_checkin_time', label: 'Artist arrival', type: 'time' },
       { key: 'load_in_time', label: 'Load in', type: 'time' },
+      // Printed beside Load in on the schedule page and in the run of show's Load In Duration column.
+      { key: 'load_in_duration', label: 'Load in duration', placeholder: 'e.g. 2 hr', durationOf: 'load_in_time' },
       { key: 'soundcheck_time', label: 'Line check', type: 'time' },
       { key: 'headliner_set_time', label: 'Performance start', type: 'time' },
       { key: 'set_end_time', label: 'Performance stop', type: 'time' },

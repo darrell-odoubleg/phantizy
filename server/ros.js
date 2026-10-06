@@ -8,7 +8,8 @@
 // each pair of consecutive acts (previous set end → next set start); its
 // Stage Setup is stored by the following act's offer_id ({ co: id }). Each
 // act with a Load in time on its advance sheet also gets a "<Act> Load In"
-// row; its time prints under Stage Setup (then any note, stored as { li: id }).
+// row; its time prints under Stage Setup (then any note, stored as { li: id })
+// and its advance Load in duration under Load In Duration.
 // Festival-wide fixed rows (catering) are added to every stage and day,
 // shown in red and never stored. Everything is sorted by start time.
 
@@ -67,7 +68,7 @@ function runOfShowRows(festivalName, stage, day) {
     ? parseRows((db.prepare('SELECT rows FROM festival_ros WHERE festival_id = ? AND stage = ? AND day = ?').get(fest.id, stage, day) || {}).rows)
     : [];
   const offers = db.prepare(`SELECT o.id, o.status, o.artist_name, o.stage, o.show_time, o.set_length,
-      a.headliner_set_time, a.set_end_time, a.load_in_time
+      a.headliner_set_time, a.set_end_time, a.load_in_time, a.load_in_duration
     FROM offers o LEFT JOIN advances a ON a.offer_id = o.id
     WHERE o.festival_name = ? AND o.event_date = ? AND o.status NOT IN ('declined', 'cancelled')`).all(festivalName, day)
     .filter(o => norm(o.stage) === norm(stage));
@@ -82,7 +83,7 @@ function runOfShowRows(festivalName, stage, day) {
     return { offer_id: o.id, item: o.artist_name || '', setup: setupFor.get(o.id) || '', time: start, end, duration: durationText(start, end) };
   });
   const loadIns = offers.filter(o => RESTRICTED_STATUSES.includes(o.status) && toMin(o.load_in_time) !== null).map(o => ({
-    li: o.id, item: `${o.artist_name || 'Artist'} Load In`, setup: liSetupFor.get(o.id) || '', time: o.load_in_time, end: '', duration: '',
+    li: o.id, item: `${o.artist_name || 'Artist'} Load In`, setup: liSetupFor.get(o.id) || '', time: o.load_in_time, end: '', duration: '', load_in_duration: o.load_in_duration || '',
   }));
   const manualRows = stored.filter(r => !r.offer_id && !r.co && !r.li).map(r => ({
     item: r.item || '', setup: r.setup || '', time: r.time || '', end: r.end || '',

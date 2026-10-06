@@ -236,7 +236,9 @@ function scheduleSection(doc, title, fields, data, offer) {
   const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : 1e9; };
   const times = fields.filter(f => f.type === 'time' && !blank(data[f.key]))
     .map((f, i) => ({ f, i })).sort((a, b) => toMin(data[a.f.key]) - toMin(data[b.f.key]) || a.i - b.i).map(x => x.f);
-  const notes = fields.filter(f => f.type !== 'time' && !blank(data[f.key]));
+  const notes = fields.filter(f => f.type !== 'time' && !f.durationOf && !blank(data[f.key]));
+  // Durations (durationOf) print in brackets after their time.
+  const durFor = (f) => fields.find(d => d.durationOf === f.key && !blank(data[d.key]));
   if (!times.length && !notes.length) return;
   doc.addPage();
   const left = doc.page.margins.left;
@@ -250,7 +252,8 @@ function scheduleSection(doc, title, fields, data, offer) {
   for (const f of times) {
     const h = 30;
     doc.font('Helvetica').fontSize(13).fillColor(INK).text(f.label, left + 4, y + 9, { width: width * 0.65 });
-    doc.font('Helvetica-Bold').fontSize(13).fillColor(INK).text(fmtValue(f, data[f.key]), left, y + 9, { width: width - 4, align: 'right' });
+    const dur = durFor(f);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor(INK).text(fmtValue(f, data[f.key]) + (dur ? ` (${data[dur.key]})` : ''), left, y + 9, { width: width - 4, align: 'right' });
     y += h;
     doc.moveTo(left, y).lineTo(left + width, y).lineWidth(0.5).strokeColor(RULE).stroke();
   }
@@ -383,10 +386,11 @@ function welcomeLetterPdf(offer, advance, welcome, out, contents = [], separate 
 // Run of show table for one stage on one day. highlight: text (the act's
 // name) whose rows are shaded so the act can find its slot.
 const ROS_COLS = [
-  { key: 'item', label: 'Item', w: 0.29 },
-  { key: 'setup', label: 'Stage Setup', w: 0.28 },
-  { key: 'time', label: 'Performance Time', w: 0.28, type: 'time' },
-  { key: 'duration', label: 'Duration', w: 0.15 },
+  { key: 'item', label: 'Item', w: 0.25 },
+  { key: 'setup', label: 'Stage Setup', w: 0.2 },
+  { key: 'load_in_duration', label: 'Load In Duration', w: 0.15 },
+  { key: 'time', label: 'Performance Time', w: 0.27, type: 'time' },
+  { key: 'duration', label: 'Duration', w: 0.13 },
 ];
 // Festival-specific run of show header logo and Main Stage curfew lines.
 // Calibri isn't on the server; Carlito is its metric-compatible twin.
