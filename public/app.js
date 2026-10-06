@@ -67,7 +67,8 @@ async function initNav(active) {
     <a class="brand" href="/"><img src="/logo-white.png" alt="Phantizy Productions"></a>
     <div class="links">
       <a href="/" class="${active === 'offers' ? 'active' : ''}">${{ production: 'Shows', accounting: 'Accounts' }[ME.role] || 'Offers'}</a>
-      ${PF.ROLE_DOC_KINDS[ME.role] ? '' : `<a href="/offer.html" class="${active === 'new' ? 'active' : ''}">+ New offer</a>`}
+      ${PF.ROLE_DOC_KINDS[ME.role] ? '' : `<a href="/offer.html" class="${active === 'new' ? 'active' : ''}">+ New offer</a>
+      <a href="/run-of-show.html" class="${active === 'ros' ? 'active' : ''}">Run of show</a>`}
       <a href="/admin.html" class="${active === 'admin' ? 'active' : ''}">${ME.role === 'admin' ? 'Settings' : 'Account'}</a>
       <span class="user">${esc(ME.name)}</span>
       <a href="#" id="logoutLink">Sign out</a>

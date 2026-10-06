@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run of show · Phantizy Productions</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" type="image/png" href="/icon-64.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+</head>
+<body>
+<div class="wrap">
+  <div class="head-row">
+    <div>
+      <h1>Run of show</h1>
+      <p class="subtitle">Each stage, each day. Accepted acts fill in from their advance sheets (Set time – Set ends), with changeovers between them. Each act's welcome package includes its stage's run of show.</p>
+    </div>
+    <select id="festSel" style="width:auto;margin:0" hidden></select>
+  </div>
+  <div class="filters" id="dayTabs"></div>
+  <div id="stages"></div>
+  <input type="file" id="rosFile" hidden accept=".pdf,.png,.jpg,.jpeg">
+</div>
+
+<dialog class="modal wide" id="rosDlg">
+  <div class="mbody">
+    <h2 id="rosTitle">Run of show</h2>
+    <p class="subtitle" style="margin-bottom:12px">Acts and changeovers fill in automatically; add their Stage Setup. Add other rows (gates, meet &amp; greets, curfew) with + Add row. Rows are ordered by start time when saved.</p>
+    <div class="note-box warn" id="rosPending" hidden></div>
+    <div class="table-wrap"><table class="ros-edit">
+      <thead><tr><th>Item</th><th>Stage Setup</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr></thead>
+      <tbody id="rosRows"></tbody>
+    </table></div>
+    <div class="btn-row" style="margin-top:10px"><button type="button" class="btn outline sm" id="rosAddRow">+ Add row</button></div>
+  </div>
+  <div class="mfoot">
+    <a class="btn outline" id="rosPreview" target="_blank" style="margin-right:auto">Preview PDF</a>
+    <button type="button" class="btn outline" id="rosCancel">Cancel</button>
+    <button type="button" class="btn" id="rosSave">Save run of show</button>
+  </div>
+</dialog>
+
+<script src="/fields.js"></script>
+<script src="/app.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const params = new URLSearchParams(location.search);
+let FESTS = [], FEST = null, DAY = null;
+let FILES = [], TABLES = [];
+let rosEdit = null, rosDirty = false, rosTarget = null;
+
+const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+function durText(a, b) {
+  const x = toMin(a), y = toMin(b); if (x === null || y === null) return '';
+  let d = y - x; if (d <= 0) d += 1440;
+  return [Math.floor(d / 60) && `${Math.floor(d / 60)} hr`, d % 60 && `${d % 60} min`].filter(Boolean).join(' ');
+}
+const t5 = (t) => (/^\d{1,2}:\d{2}$/.test(t || '') ? t.padStart(5, '0') : '');
+function fmtT(t) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); if (!m) return '';
+  const h = Number(m[1]); return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+}
+const perfTime = (r) => [fmtT(r.time), fmtT(r.end)].filter(Boolean).join(' – ');
+function remember() {
+  const q = new URLSearchParams({ festival: FEST.id, day: DAY });
+  history.replaceState(null, '', '?' + q);
+}
+
+// ---- page ----
+async function loadFestival() {
+  const data = await api(`/festival-options/${FEST.id}/run-of-show`);
+  FILES = data.files; TABLES = data.tables;
+  const days = [...FEST.days].sort();
+  if (!days.includes(DAY)) DAY = days.includes(params.get('day')) ? params.get('day') : days[0];
+  render();
+}
+function render() {
+  const days = [...FEST.days].sort();
+  if (!FEST.stages.length || !days.length) {
+    $('#dayTabs').innerHTML = '';
+    $('#stages').innerHTML = `<div class="card"><div class="empty">${esc(FEST.name)} has no stages or festival days yet.
+      ${ME.role === 'admin' ? `Add them in <a href="/festival.html?id=${FEST.id}">Settings → Festivals → Details &amp; welcome</a>.` : 'An admin can add them in Settings.'}</div></div>`;
+    return;
+  }
+  $('#dayTabs').innerHTML = days.map(d => `<button data-day="${d}" class="${d === DAY ? 'active' : ''}">${esc(fmtDate(d))}</button>`).join('');
+  remember();
+  $('#stages').innerHTML = FEST.stages.map(stage => {
+    const t = TABLES.find(x => x.stage === stage && x.day === DAY) || { rows: [], pending: 0, overlaps: [] };
+    const file = FILES.find(x => x.stage === stage && x.day === DAY);
+    const acts = t.rows.filter(r => r.offer_id).length;
+    const attrs = `data-stage="${esc(stage)}"`;
+    const pdf = `/api/festival-options/${FEST.id}/run-of-show.pdf?stage=${encodeURIComponent(stage)}&day=${DAY}`;
+    return `<div class="card ros-card">
+      <div class="head-row" style="margin-bottom:10px">
+        <div><h2 style="margin:0">${esc(stage)}</h2>
+          <div class="meta-line">${acts} act${acts === 1 ? '' : 's'}${t.pending ? ` · <span class="warn-text">${t.pending} offer${t.pending > 1 ? 's' : ''} not accepted yet</span>` : ''}${t.updated_by_name ? ` · edited by ${esc(t.updated_by_name)} ${fmtStamp(t.updated_at)}` : ''}</div></div>
+        <div class="btn-row">
+          <button class="btn sm" data-edit ${attrs}>Edit run of show</button>
+          ${t.rows.length ? `<a class="btn outline sm" target="_blank" href="${pdf}">Preview PDF</a>` : ''}
+          <button class="btn outline sm" data-up ${attrs}>${file ? 'Replace file' : 'Upload a file instead'}</button>
+        </div>
+      </div>
+      ${(t.overlaps || []).map(([a, b]) => `<div class="note-box warn">${esc(a)} and ${esc(b)} overlap: check their Set time / Set ends on the advance sheets.</div>`).join('')}
+      ${t.rows.length ? `<div class="table-wrap"><table class="ros-view">
+        <thead><tr><th>Item</th><th>Stage Setup</th><th>Performance Time</th><th>Duration</th></tr></thead>
+        <tbody>${t.rows.map(r => `<tr class="${r.co ? 'co-row' : r.offer_id ? 'act-row' : ''}">
+          <td>${r.offer_id ? `<a href="/offer.html?id=${r.offer_id}#advance">${esc(r.item)}</a>` : esc(r.item)}</td>
+          <td>${esc(r.setup)}</td><td class="nowrap">${esc(perfTime(r))}</td><td class="nowrap">${esc(r.duration)}</td></tr>`).join('')}</tbody>
+      </table></div>` : `<div class="empty">No rows yet. Acts appear here once their offers are accepted with this stage and date.</div>`}
+      ${file ? `<div class="ros-file">Uploaded file: ${/^(application\/pdf|image\/(png|jpeg))$/.test(file.mime_type) ? `<a target="_blank" href="/api/festival-files/${file.id}/download?view=1">${esc(file.original_name)}</a>` : esc(file.original_name)}
+        <span class="meta">${fmtSize(file.size)} · ${esc(file.uploaded_by_name || '')}${t.rows.length ? ' · not sent, because the table above has rows' : ' · sent in welcome packages'}</span>
+        <button class="icon-btn" data-del-file="${file.id}" title="Delete file">&times;</button></div>` : ''}
+    </div>`;
+  }).join('');
+}
+$('#dayTabs').onclick = (e) => { const b = e.target.closest('[data-day]'); if (!b) return; DAY = b.dataset.day; render(); };
+$('#festSel').onchange = async (e) => { FEST = FESTS.find(f => String(f.id) === e.target.value); await loadFestival(); };
+
+$('#stages').addEventListener('click', async (e) => {
+  const ed = e.target.closest('[data-edit]');
+  if (ed) return openRos(ed.dataset.stage);
+  const up = e.target.closest('[data-up]');
+  if (up) { rosTarget = up.dataset.stage; $('#rosFile').click(); return; }
+  const del = e.target.closest('[data-del-file]');
+  if (del) {
+    if (!confirm('Delete this uploaded run of show file?')) return;
+    try { await api('/festival-files/' + del.dataset.delFile, { method: 'DELETE' }); toast('File deleted'); loadFestival(); }
+    catch (ex) { toast(ex.message, true); }
+  }
+});
+$('#rosFile').onchange = async (e) => {
+  const file = e.target.files[0]; if (!file || !rosTarget) return;
+  const fd = new FormData();
+  fd.append('stage', rosTarget); fd.append('day', DAY); // fields before the file
+  fd.append('file', file);
+  try {
+    const r = await api(`/festival-options/${FEST.id}/run-of-show`, { method: 'POST', body: fd });
+    toast(`Run of show file ${r.replaced ? 'replaced' : 'uploaded'}`);
+    loadFestival();
+  } catch (ex) { toast(ex.message, true); }
+  finally { e.target.value = ''; rosTarget = null; }
+};
+
+// ---- editor ----
+function renderRosRows() {
+  $('#rosRows').innerHTML = rosEdit.rows.map((r, i) => {
+    if (r.offer_id || r.co) {
+      return `<tr data-i="${i}" class="${r.co ? 'co-row' : 'artist-row'}">
+        <td>${r.co ? 'Changeover' : `<strong>${esc(r.item)}</strong>`} <span class="pill" title="${r.co ? 'Between the previous set end and the next set start' : 'From the offer and its advance sheet'}">${r.co ? 'auto' : 'from advance'}</span></td>
+        <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="${r.co ? 'e.g. Line check' : 'e.g. Full production'}"></td>
+        <td>${esc(fmtT(r.time)) || '<span class="meta">set time?</span>'}</td>
+        <td>${esc(fmtT(r.end)) || '<span class="meta">set ends?</span>'}</td>
+        <td>${esc(r.duration)}</td>
+        <td>${r.offer_id ? `<a class="meta" href="/offer.html?id=${r.offer_id}#advance" target="_blank" title="Change times on the advance sheet">edit times</a>` : ''}</td>
+      </tr>`;
+    }
+    return `<tr data-i="${i}">
+      <td><input type="text" data-k="item" value="${esc(r.item)}" placeholder="e.g. Gates open"></td>
+      <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="Stage setup"></td>
+      <td><input type="time" data-k="time" value="${esc(t5(r.time))}"></td>
+      <td><input type="time" data-k="end" value="${esc(t5(r.end))}"></td>
+      <td><input type="text" data-k="duration" value="${esc(r.duration)}" placeholder="auto"></td>
+      <td class="nowrap"><button type="button" class="icon-btn" data-rm title="Remove row">&times;</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">No accepted acts on this stage and day yet. Add rows with + Add row.</td></tr>';
+}
+function openRos(stage) {
+  const t = TABLES.find(x => x.stage === stage && x.day === DAY) || { rows: [], pending: 0 };
+  rosEdit = { stage, day: DAY, rows: t.rows.map(r => ({ ...r })) };
+  $('#rosPending').hidden = !t.pending;
+  if (t.pending) $('#rosPending').textContent = `${t.pending} offer${t.pending > 1 ? 's' : ''} on this stage and day ${t.pending > 1 ? "aren't" : "isn't"} accepted yet, so ${t.pending > 1 ? "they're" : "it's"} left off until the status is Accepted.`;
+  rosDirty = false;
+  $('#rosTitle').textContent = `Run of show: ${stage}, ${fmtDate(DAY)}`;
+  $('#rosPreview').href = `/api/festival-options/${FEST.id}/run-of-show.pdf?stage=${encodeURIComponent(stage)}&day=${DAY}`;
+  renderRosRows();
+  $('#rosDlg').showModal();
+}
+$('#rosRows').addEventListener('input', (e) => {
+  const tr = e.target.closest('[data-i]'); if (!tr || !e.target.dataset.k) return;
+  const row = rosEdit.rows[tr.dataset.i];
+  row[e.target.dataset.k] = e.target.value; rosDirty = true;
+  // Fill Duration from Start/End unless it was typed by hand.
+  if ((e.target.dataset.k === 'time' || e.target.dataset.k === 'end') && (!row.duration || row._autoDur)) {
+    row.duration = durText(row.time, row.end); row._autoDur = true;
+    tr.querySelector('[data-k="duration"]').value = row.duration;
+  }
+  if (e.target.dataset.k === 'duration') row._autoDur = false;
+});
+$('#rosRows').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-rm]')) return;
+  rosEdit.rows.splice(Number(e.target.closest('[data-i]').dataset.i), 1);
+  rosDirty = true; renderRosRows();
+});
+$('#rosAddRow').onclick = () => {
+  rosEdit.rows.push({ item: '', setup: '', time: '', end: '', duration: '' }); rosDirty = true; renderRosRows();
+  $('#rosRows tr:last-child input').focus();
+};
+$('#rosPreview').addEventListener('click', (e) => { if (rosDirty) { e.preventDefault(); toast('Save first, then preview', true); } });
+$('#rosCancel').onclick = () => { if (!rosDirty || confirm('Discard your changes to this run of show?')) $('#rosDlg').close(); };
+$('#rosSave').onclick = async () => {
+  try {
+    const rows = rosEdit.rows.map(({ _autoDur, ...r }) => r);
+    const r = await api(`/festival-options/${FEST.id}/run-of-show-table`, { method: 'PUT', body: { stage: rosEdit.stage, day: rosEdit.day, rows } });
+    rosDirty = false; toast(`Run of show saved (${r.count} item${r.count === 1 ? '' : 's'})`);
+    await loadFestival();
+    // Keep the editor open on the saved (re-ordered) rows so Preview works right away.
+    const t = TABLES.find(x => x.stage === rosEdit.stage && x.day === rosEdit.day);
+    rosEdit.rows = t ? t.rows.map(x => ({ ...x })) : []; renderRosRows();
+  } catch (e) { toast(e.message, true); }
+};
+window.addEventListener('beforeunload', (e) => { if (rosDirty) { e.preventDefault(); e.returnValue = ''; } });
+
+// ---- boot ----
+initNav('ros').then(async () => {
+  if (PF.ROLE_DOC_KINDS[ME.role]) { location.replace('/'); return; }
+  FESTS = await api('/festival-options');
+  if (!FESTS.length) { $('#stages').innerHTML = '<div class="card"><div class="empty">No festivals yet.</div></div>'; return; }
+  FEST = FESTS.find(f => String(f.id) === params.get('festival')) || FESTS[0];
+  DAY = params.get('day');
+  $('#festSel').innerHTML = FESTS.map(f => `<option value="${f.id}"${f.id === FEST.id ? ' selected' : ''}>${esc(f.name)}</option>`).join('');
+  $('#festSel').hidden = FESTS.length < 2;
+  await loadFestival();
+});
+</script>
+</body>
+</html>

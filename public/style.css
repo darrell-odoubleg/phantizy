@@ -151,6 +151,16 @@ dialog.modal.wide{width:min(980px,calc(100vw - 24px));}
 .nowrap{white-space:nowrap;}
 .ros-file .meta{display:block;font-size:11.5px;color:var(--dim);}
 
+/* Run of show page */
+.ros-card h2{font-size:15px;text-transform:none;letter-spacing:0;color:var(--ink);}
+.meta-line{font-size:12.5px;color:var(--dim);margin-top:2px;}
+.warn-text{color:#8a6d00;font-weight:600;}
+.ros-view td{font-size:13.5px;}
+.ros-view tr.act-row td{font-weight:600;}
+.ros-view tr.co-row td,.ros-edit tr.co-row td{color:var(--dim);font-style:italic;}
+.ros-edit tr.co-row td{background:#fbfbfc;vertical-align:middle;font-size:13px;}
+.ros-edit tr.co-row input{font-style:normal;}
+
 /* Email dialog */
 dialog.modal{border:none;border-radius:10px;padding:0;width:min(640px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.3);}
 dialog.modal::backdrop{background:rgba(20,14,30,.5);}

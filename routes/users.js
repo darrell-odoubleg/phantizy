@@ -4,7 +4,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db/init');
-const { requireAdmin, hashPassword } = require('../server/auth');
+const { requireAdmin, requireStaff, hashPassword } = require('../server/auth');
 const fs = require('fs');
 const path = require('path');
 const { OFFER_SECTIONS, ROLES, WELCOME_FILE_KINDS } = require('../public/fields');
@@ -189,7 +189,7 @@ router.put('/festival-options/:id/schedule', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/festival-options/:id/run-of-show', requireAdmin, (req, res) => {
+router.get('/festival-options/:id/run-of-show', requireStaff, (req, res) => {
   const fid = Number(req.params.id);
   res.json({
     files: db.prepare(`SELECT id, stage, day, original_name, mime_type, size, uploaded_by_name, uploaded_at
@@ -200,9 +200,9 @@ router.get('/festival-options/:id/run-of-show', requireAdmin, (req, res) => {
       if (!fest) return [];
       const meta = db.prepare('SELECT stage, day, updated_by_name, updated_at FROM festival_ros WHERE festival_id = ?').all(fid);
       return parseList(fest.stages).flatMap(stage => parseList(fest.days).map(day => {
-        const { rows, pending } = runOfShowRows(fest.name, stage, day);
+        const { rows, pending, overlaps } = runOfShowRows(fest.name, stage, day);
         const m = meta.find(x => x.stage === stage && x.day === day) || {};
-        return { stage, day, rows, pending, updated_by_name: m.updated_by_name, updated_at: m.updated_at };
+        return { stage, day, rows, pending, overlaps, updated_by_name: m.updated_by_name, updated_at: m.updated_at };
       }));
     })(),
   });
@@ -218,17 +218,18 @@ function rosSlot(req, res) {
   return { fest, stage, day };
 }
 
-router.put('/festival-options/:id/run-of-show-table', requireAdmin, (req, res) => {
+router.put('/festival-options/:id/run-of-show-table', requireStaff, (req, res) => {
   const slot = rosSlot(req, res); if (!slot) return;
   const str = (v, max) => String(v ?? '').trim().slice(0, max);
   const time = (v) => (/^\d{1,2}:\d{2}$/.test(v || '') ? v : '');
   // Artist rows (offer_id) only keep their Stage Setup; their name and times
   // always come from the offer / advance sheet (server/ros.js).
+  // Changeover rows (co = following act's offer_id) likewise keep only Stage Setup.
   const rows = (Array.isArray(req.body.rows) ? req.body.rows : []).slice(0, 200)
-    .map(r => (r.offer_id
-      ? { offer_id: Number(r.offer_id), setup: str(r.setup, 300) }
+    .map(r => (r.offer_id ? { offer_id: Number(r.offer_id), setup: str(r.setup, 300) }
+      : r.co ? { co: Number(r.co), setup: str(r.setup, 300) }
       : { item: str(r.item, 300), setup: str(r.setup, 300), time: time(r.time), end: time(r.end), duration: str(r.duration, 60) }))
-    .filter(r => r.offer_id || r.item || r.setup || r.time || r.duration);
+    .filter(r => r.offer_id || (r.co && r.setup) || r.item || r.setup || r.time || r.duration);
   db.prepare(`INSERT INTO festival_ros (festival_id, stage, day, rows, updated_by_name, updated_at)
               VALUES (?, ?, ?, ?, ?, datetime('now'))
               ON CONFLICT (festival_id, stage, day) DO UPDATE SET rows = excluded.rows, updated_by_name = excluded.updated_by_name, updated_at = excluded.updated_at`)
@@ -236,7 +237,7 @@ router.put('/festival-options/:id/run-of-show-table', requireAdmin, (req, res) =
   res.json({ ok: true, count: runOfShowRows(slot.fest.name, slot.stage, slot.day).rows.length });
 });
 
-router.get('/festival-options/:id/run-of-show.pdf', requireAdmin, (req, res) => {
+router.get('/festival-options/:id/run-of-show.pdf', requireStaff, (req, res) => {
   const slot = rosSlot(req, res); if (!slot) return;
   const { rows } = runOfShowRows(slot.fest.name, slot.stage, slot.day);
   res.setHeader('Content-Type', 'application/pdf');
@@ -245,7 +246,7 @@ router.get('/festival-options/:id/run-of-show.pdf', requireAdmin, (req, res) => 
 });
 
 // One file per stage + day; uploading again replaces it.
-router.post('/festival-options/:id/run-of-show', requireAdmin, (req, res, next) => {
+router.post('/festival-options/:id/run-of-show', requireStaff, (req, res, next) => {
   if (!db.prepare('SELECT 1 FROM festivals WHERE id = ?').get(Number(req.params.id))) return res.status(404).json({ error: 'Festival not found' });
   next();
 }, festivalUpload.single('file'), (req, res) => {
@@ -301,9 +302,11 @@ router.get('/festival-files/:fid/download', (req, res) => {
   sendStoredFile(req, res, festivalFilePath(f), f.mime_type, f.original_name);
 });
 
-router.delete('/festival-files/:fid', requireAdmin, (req, res) => {
+// Admins delete any festival file; staff only run-of-show uploads.
+router.delete('/festival-files/:fid', requireStaff, (req, res) => {
   const f = db.prepare('SELECT * FROM festival_files WHERE id = ?').get(Number(req.params.fid));
   if (!f) return res.status(404).json({ error: 'File not found' });
+  if (req.user.role !== 'admin' && f.kind !== 'run_of_show') return res.status(403).json({ error: 'Admins only' });
   db.prepare('DELETE FROM festival_files WHERE id = ?').run(f.id);
   fs.rmSync(festivalFilePath(f), { force: true });
   res.json({ ok: true });

@@ -60,6 +60,12 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// Admin or staff (not the restricted production / accounting roles).
+function requireStaff(req, res, next) {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'staff')) return next();
+  res.status(403).json({ error: 'Admins and staff only' });
+}
+
 function requireAdmin(req, res, next) {
   if (req.user && req.user.role === 'admin') return next();
   res.status(403).json({ error: 'Admins only' });
@@ -108,4 +114,4 @@ function hashPassword(pw) {
   return bcrypt.hashSync(String(pw), 12);
 }
 
-module.exports = { router, requireAuth, requireAdmin, roleGate, hashPassword };
+module.exports = { router, requireAuth, requireAdmin, requireStaff, roleGate, hashPassword };

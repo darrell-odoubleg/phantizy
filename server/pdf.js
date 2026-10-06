@@ -352,7 +352,8 @@ function runOfShowPdf({ festival, stage, day, rows, highlight, highlightOfferId 
     const mine = (highlightOfferId && r.offer_id === highlightOfferId) || (hl && !r.offer_id && String(r.item || '').toLowerCase().includes(hl));
     if (mine) doc.rect(left, y, width, h).fill('#EEEAF4');
     else if (n % 2) doc.rect(left, y, width, h).fill('#F7F6F9');
-    cells.forEach((t, i) => doc.font(mine ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor(INK)
+    const font = mine ? 'Helvetica-Bold' : r.co ? 'Helvetica-Oblique' : 'Helvetica';
+    cells.forEach((t, i) => doc.font(font).fontSize(10).fillColor(r.co ? DIM : INK)
       .text(t, colX[i] + pad, y + pad, { width: ROS_COLS[i].w * width - pad * 2 }));
     y += h;
     doc.moveTo(left, y).lineTo(left + width, y).lineWidth(0.4).strokeColor(RULE).stroke();

@@ -4,7 +4,10 @@
 // from their advance sheet: Performance time = Set time – Set ends (falling
 // back to the offer's set time + set length). Stored rows add the Stage Setup
 // text for artist rows (matched by offer_id) and any manual rows (gates,
-// changeovers, curfew). Everything is sorted by start time.
+// curfew, meet & greets). A Changeover row is added automatically between
+// each pair of consecutive acts (previous set end → next set start); its
+// Stage Setup is stored by the following act's offer_id ({ co: id }).
+// Everything is sorted by start time.
 
 const db = require('../db/init');
 const { RESTRICTED_STATUSES } = require('../public/fields');
@@ -40,7 +43,8 @@ function durationText(start, end) {
 const norm = (s) => String(s || '').trim().toLowerCase();
 const parseRows = (s) => { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; } };
 
-// Returns { rows, pending } — pending = offers on this slot not yet accepted.
+// Returns { rows, pending, overlaps } — pending = offers on this slot not yet
+// accepted; overlaps = [[actA, actB]] whose sets overlap (no changeover added).
 function runOfShowRows(festivalName, stage, day) {
   const fest = db.prepare('SELECT id FROM festivals WHERE name = ?').get(festivalName);
   const stored = fest
@@ -53,20 +57,34 @@ function runOfShowRows(festivalName, stage, day) {
     .filter(o => norm(o.stage) === norm(stage));
 
   const setupFor = new Map(stored.filter(r => r.offer_id).map(r => [Number(r.offer_id), r.setup || '']));
+  const coSetupFor = new Map(stored.filter(r => r.co).map(r => [Number(r.co), r.setup || '']));
   const artistRows = offers.filter(o => RESTRICTED_STATUSES.includes(o.status)).map(o => {
     const start = o.headliner_set_time || o.show_time || '';
     let end = o.set_end_time || '';
     if (!end && toMin(start) !== null && setLengthMinutes(o.set_length)) end = fromMin(toMin(start) + setLengthMinutes(o.set_length));
     return { offer_id: o.id, item: o.artist_name || '', setup: setupFor.get(o.id) || '', time: start, end, duration: durationText(start, end) };
   });
-  const manualRows = stored.filter(r => !r.offer_id).map(r => ({
+  const manualRows = stored.filter(r => !r.offer_id && !r.co).map(r => ({
     item: r.item || '', setup: r.setup || '', time: r.time || '', end: r.end || '',
     duration: r.duration || durationText(r.time, r.end),
   }));
-  // Sort by start time; rows without a time keep their order at the end.
-  const all = [...artistRows, ...manualRows].map((r, i) => ({ r, i, t: toMin(r.time) }));
-  all.sort((a, b) => (a.t ?? 1e9) - (b.t ?? 1e9) || a.i - b.i);
-  return { rows: all.map(x => x.r), pending: offers.filter(o => !RESTRICTED_STATUSES.includes(o.status)).length };
+  // Changeovers between consecutive acts (in set-time order).
+  const timed = artistRows.filter(r => toMin(r.time) !== null).sort((a, b) => toMin(a.time) - toMin(b.time));
+  const changeovers = [], overlaps = [];
+  for (let i = 0; i + 1 < timed.length; i++) {
+    const a = timed[i], b = timed[i + 1];
+    if (toMin(a.end) === null) continue;
+    // A set ending after midnight (end earlier than start) ends the next day.
+    const aEnd = toMin(a.end) + (toMin(a.end) < toMin(a.time) ? 1440 : 0);
+    if (aEnd > toMin(b.time)) { overlaps.push([a.item, b.item]); continue; }
+    if (aEnd === toMin(b.time)) continue; // back to back, no gap
+    changeovers.push({ co: b.offer_id, item: 'Changeover', setup: coSetupFor.get(b.offer_id) || '', time: a.end, end: b.time, duration: durationText(a.end, b.time) });
+  }
+  // Sort by start time (a changeover sorts after a row starting at the same
+  // minute); rows without a time keep their order at the end.
+  const all = [...artistRows, ...manualRows, ...changeovers].map((r, i) => ({ r, i, t: toMin(r.time), co: r.co ? 1 : 0 }));
+  all.sort((a, b) => (a.t ?? 1e9) - (b.t ?? 1e9) || a.co - b.co || a.i - b.i);
+  return { rows: all.map(x => x.r), pending: offers.filter(o => !RESTRICTED_STATUSES.includes(o.status)).length, overlaps };
 }
 
 module.exports = { runOfShowRows, durationText };
