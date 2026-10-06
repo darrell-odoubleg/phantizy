@@ -88,6 +88,7 @@ router.put('/festival-options/:id/welcome', requireAdmin, (req, res) => {
   const b = req.body || {};
   const str = (v, max = 5000) => String(v ?? '').trim().slice(0, max);
   const welcome = {
+    subject: str(b.subject, 250).replace(/[\r\n]+/g, ' '),
     dos_name: str(b.dos_name, 200), dos_phone: str(b.dos_phone, 100),
     intro: str(b.intro), closing: str(b.closing), signoff: str(b.signoff, 300),
     sections: (Array.isArray(b.sections) ? b.sections : []).slice(0, 60)

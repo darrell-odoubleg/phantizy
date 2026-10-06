@@ -22,6 +22,11 @@
   <p class="subtitle">The letter emailed to each act's tour manager from the offer's Advance sheet tab. It's combined with that show's date, stage, set time, hotel and advance details. You can use {artist}, {festival}, {date}, {stage}, {tm}, {dos_name} and {dos_phone} in the text. Sections with no text are left off the letter.</p>
   <form id="welcomeForm" novalidate>
     <div class="card">
+      <h2>Email</h2>
+      <label for="w_subject">Subject line for every welcome package email</label>
+      <input type="text" id="w_subject" placeholder="e.g. Rock the Locks - Welcome Package">
+    </div>
+    <div class="card">
       <h2>Day of show contact</h2>
       <div class="grid">
         <div><label for="w_dos_name">Name</label><input type="text" id="w_dos_name"></div>
@@ -117,6 +122,7 @@ $('#saveWelcome').onclick = async () => {
   $('#saveWelcome').disabled = true;
   try {
     await api(`/festival-options/${id}/welcome`, { method: 'PUT', body: {
+      subject: $('#w_subject').value,
       dos_name: $('#w_dos_name').value, dos_phone: $('#w_dos_phone').value,
       intro: $('#w_intro').value, closing: $('#w_closing').value, signoff: $('#w_signoff').value,
       sections: wSections,
@@ -167,6 +173,7 @@ $('#fList').onclick = async (e) => {
 };
 
 function loadWelcome(w) {
+  $('#w_subject').value = w.subject || '';
   $('#w_dos_name').value = w.dos_name || '';
   $('#w_dos_phone').value = w.dos_phone || '';
   $('#w_intro').value = w.intro || '';

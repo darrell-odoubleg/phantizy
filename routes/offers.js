@@ -322,7 +322,9 @@ router.get('/offers/:id/welcome', loadOffer, (req, res) => {
     attachments: welcomeAttachments(req.offer).map(publicAttachment),
     to: adv.tour_manager_email || '',
     cc: req.user.email,
-    subject: `Welcome to ${vars.festival || 'the festival'}: ${vars.artist}${vars.date ? ' (' + vars.date + ')' : ''}`,
+    // Festival's own subject line (Settings → Festivals → Details & welcome), else a default.
+    subject: welcome.subject ? fillTemplate(welcome.subject, vars)
+      : `${vars.festival || 'Festival'} - Welcome Package`,
     message,
     log: db.prepare(`SELECT to_addr, cc_addr, subject, sent_by_name, sent_at FROM email_log
                      WHERE offer_id = ? AND kind = 'welcome' ORDER BY sent_at DESC LIMIT 10`).all(req.offer.id),
