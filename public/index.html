@@ -72,7 +72,7 @@ async function load() {
         : r.deposit_amount ? `<span class="pill ${r.deposit_due && r.deposit_due < today ? 'late' : 'off'}">${esc(money(r.deposit_amount))}${r.deposit_due ? ' due ' + esc(fmtShort(r.deposit_due)) : ''}</span>` : '<span class="pill off">—</span>'}</td>
       <td class="hide-sm">${paid(r.settlement_date, 'Settled')}</td>
       <td>${paid(r.balance_paid_date, 'Balance paid')}</td>
-      <td class="hide-sm"><span class="pill ${r.w9_count ? '' : 'off'}">${r.w9_count ? 'On file' : 'Missing'}</span></td>
+      <td class="hide-sm"><span class="pill ${r.w9_count ? '' : 'off'}" title="${r.w9_count ? 'W-9 on file' : 'W-9 missing'}">W-9</span><span class="pill ${r.coi_count ? '' : 'off'}" title="${r.coi_count ? 'Certificate of insurance on file' : 'Certificate of insurance missing'}">COI</span></td>
     </tr>`).join('') : `<tr><td colspan="7" class="empty">${q || festival ? 'No shows match.' : 'No accepted offers yet.'}</td></tr>`;
     return;
   }
@@ -131,11 +131,11 @@ initNav('offers').then(async () => {
   if (ROLE === 'accounting') {
     status = '';
     document.getElementById('pageTitle').textContent = 'Accounts';
-    document.getElementById('pageSub').textContent = 'Accepted offers: deposits, settlements, balances and W-9s.';
+    document.getElementById('pageSub').textContent = 'Accepted offers: deposits, settlements, balances, W-9s and insurance certificates.';
     document.getElementById('newBtn').hidden = true;
     document.getElementById('filters').hidden = true;
     document.getElementById('q').placeholder = 'Search artist, festival, agency…';
-    document.getElementById('headRow').innerHTML = '<th>Date</th><th>Artist</th><th class="hide-sm">Guarantee</th><th>Deposit</th><th class="hide-sm">Settlement</th><th>Balance</th><th class="hide-sm">W-9</th>';
+    document.getElementById('headRow').innerHTML = '<th>Date</th><th>Artist</th><th class="hide-sm">Guarantee</th><th>Deposit</th><th class="hide-sm">Settlement</th><th>Balance</th><th class="hide-sm">Docs</th>';
   } else if (ROLE === 'production') {
     // Technicians / production managers: confirmed shows, riders & advance only.
     status = '';

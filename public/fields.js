@@ -166,12 +166,12 @@
 
   // Restricted roles see only accepted/completed shows and only the listed
   // document kinds. Production: advance sheet + riders. Accounting: the offer
-  // (read-only), W-9s and the Payments tab.
+  // (read-only), W-9s, certificates of insurance and the Payments tab.
   const ROLES = { admin: 'Admin', staff: 'Staff', production: 'Production', accounting: 'Accounting' };
   const RESTRICTED_STATUSES = ['accepted', 'completed'];
   const ROLE_DOC_KINDS = {
     production: ['rider_technical', 'rider_hospitality', 'stage_plot'],
-    accounting: ['w9'],
+    accounting: ['w9', 'coi'],
   };
 
   const DOC_KINDS = {

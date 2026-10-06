@@ -91,7 +91,7 @@ const ROLE_ALLOWED = {
 };
 const ROLE_DENIED_MSG = {
   production: 'Production accounts can only use riders, stage plots and advance sheets',
-  accounting: 'Accounting accounts can only view offers, W-9s and payments',
+  accounting: 'Accounting accounts can only view offers, W-9s, insurance certificates and payments',
 };
 function roleGate(req, res, next) {
   const allowed = ROLE_ALLOWED[req.user.role];

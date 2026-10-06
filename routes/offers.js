@@ -117,6 +117,7 @@ router.get('/offers', (req, res) => {
            (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind = 'contract') AS contract_count,
            (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind IN ('rider_technical','rider_hospitality','stage_plot')) AS rider_count,
            (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind = 'w9') AS w9_count,
+           (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind = 'coi') AS coi_count,
            o.deposit_amount, o.deposit_due, o.deposit_paid_date, o.settlement_date, o.balance_paid_date
     FROM offers o
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -126,7 +127,7 @@ router.get('/offers', (req, res) => {
   if (restrictedRole(req) === 'production') return res.json(rows.map(r => only(r, [...base, 'rider_count'])));
   if (restrictedRole(req) === 'accounting') {
     return res.json(rows.map(r => only(r, [...base, 'guarantee', 'deposit_amount', 'deposit_due', 'deposit_paid_date',
-      'settlement_date', 'balance_paid_date', 'w9_count'])));
+      'settlement_date', 'balance_paid_date', 'w9_count', 'coi_count'])));
   }
   res.json(rows);
 });
