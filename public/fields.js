@@ -58,10 +58,6 @@
     ]},
     { title: 'Provided by Festival', festivalWide: true, fields: [
       { key: 'production_provided', label: 'Stage production', type: 'textarea' },
-      { key: 'staging_provided', label: 'Staging', type: 'textarea' },
-      { key: 'audio_provided', label: 'Audio', type: 'textarea' },
-      { key: 'drum_risers_provided', label: 'Drum risers', type: 'textarea' },
-      { key: 'lighting_provided', label: 'Lighting', type: 'textarea' },
       { key: 'credentials', label: 'Artist credentials / wristbands' },
       { key: 'guest_list_offer', label: 'Guest list allotment' },
       { key: 'artist_parking', label: 'Artist parking (bus / trailer / vans)' },
@@ -83,6 +79,10 @@
   // offer sheet (heading → label), so that text lives in one place. The
   // Backline section is a dropdown of BACKLINE_OPTIONS.
   const WELCOME_ON_OFFER = [
+    { heading: 'Staging', label: 'Staging' },
+    { heading: 'Audio', label: 'Audio' },
+    { heading: 'Lighting', label: 'Lighting' },
+    { heading: 'Drum Risers', label: 'Drum risers' },
     { heading: 'Catering / Hospitality', label: 'Catering / Hospitality' },
     { heading: 'Hotel', label: 'Lodging' },
     { heading: 'Transportation', label: 'Transportation' },
