@@ -65,8 +65,22 @@ async function initNav(active) {
 async function loadFieldOptions(sections) {
   const fields = sections.flatMap(s => s.fields).filter(f => f.optionsFrom === 'festivals');
   if (!fields.length) return;
-  const names = (await api('/festival-options')).map(f => f.name);
+  window.FESTIVALS = await api('/festival-options');
+  const names = FESTIVALS.map(f => f.name);
   fields.forEach(f => { f.options = names; });
+}
+
+// Fills the empty festival-wide inputs in a form from the chosen festival's
+// saved details (Settings → Festivals → Details). Never overwrites.
+function applyFestivalDetails(form, name) {
+  const fest = (window.FESTIVALS || []).find(f => f.name === name);
+  if (!fest || !fest.details) return 0;
+  let n = 0;
+  for (const [k, v] of Object.entries(fest.details)) {
+    const el = form.querySelector(`[name="${k}"]`);
+    if (el && !el.value.trim()) { el.value = v; n++; }
+  }
+  return n;
 }
 
 // Renders sections from fields.js as cards of inputs named by field key.

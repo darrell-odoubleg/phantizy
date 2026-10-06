@@ -5,6 +5,12 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db/init');
 const { requireAdmin, hashPassword } = require('../server/auth');
+const { OFFER_SECTIONS } = require('../public/fields');
+
+// Offer fields a festival can supply defaults for (its festivalWide sections).
+const FESTIVAL_DETAIL_FIELDS = OFFER_SECTIONS.filter(s => s.festivalWide).flatMap(s => s.fields)
+  .filter(f => f.key !== 'festival_name' && !f.internal);
+const parseDetails = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
 
 const router = express.Router();
 
@@ -58,9 +64,28 @@ router.patch('/users/:id', requireAdmin, (req, res) => {
 
 router.get('/festival-options', (req, res) => {
   const all = req.query.all === '1' && req.user.role === 'admin';
-  res.json(db.prepare(`SELECT f.id, f.name, f.active,
+  const rows = db.prepare(`SELECT f.id, f.name, f.active, f.details,
       (SELECT COUNT(*) FROM offers o WHERE o.festival_name = f.name) AS offers
-    FROM festivals f ${all ? '' : 'WHERE f.active = 1'} ORDER BY f.name`).all());
+    FROM festivals f ${all ? '' : 'WHERE f.active = 1'} ORDER BY f.name`).all();
+  res.json(rows.map(r => ({ ...r, details: parseDetails(r.details) })));
+});
+
+router.get('/festival-options/:id', (req, res) => {
+  const f = db.prepare('SELECT id, name, active, details FROM festivals WHERE id = ?').get(Number(req.params.id));
+  if (!f) return res.status(404).json({ error: 'Festival not found' });
+  res.json({ ...f, details: parseDetails(f.details) });
+});
+
+router.put('/festival-options/:id/details', requireAdmin, (req, res) => {
+  const f = db.prepare('SELECT id FROM festivals WHERE id = ?').get(Number(req.params.id));
+  if (!f) return res.status(404).json({ error: 'Festival not found' });
+  const details = {};
+  for (const fld of FESTIVAL_DETAIL_FIELDS) {
+    const v = req.body && req.body[fld.key];
+    if (v !== undefined && v !== null && String(v).trim() !== '') details[fld.key] = String(v).trim();
+  }
+  db.prepare('UPDATE festivals SET details = ? WHERE id = ?').run(JSON.stringify(details), f.id);
+  res.json({ ok: true });
 });
 
 router.post('/festival-options', requireAdmin, (req, res) => {

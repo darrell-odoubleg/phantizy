@@ -13,6 +13,9 @@
     { title: 'Festival', festivalWide: true, fields: [
       { key: 'festival_name', label: 'Festival', required: true, type: 'select', options: [], optionsFrom: 'festivals', span2: true }, // options filled from Settings → Festivals
       { key: 'festival_dates', label: 'Festival dates', placeholder: 'e.g. June 12–14, 2027' },
+      { key: 'festival_gates', label: 'Gates open', type: 'time' },
+      { key: 'festival_presenter', label: 'Presented by' },
+      { key: 'festival_contact', label: 'Festival contact', type: 'textarea' },
       { key: 'venue_name', label: 'Festival site / grounds' },
       { key: 'venue_address', label: 'Site address' },
       { key: 'venue_city', label: 'City' },

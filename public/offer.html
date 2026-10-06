@@ -92,6 +92,11 @@ let dirty = { offer: false, advance: false };
 
 renderSections($('#offerForm'), PF.OFFER_SECTIONS);
 $('#offerForm').addEventListener('input', () => setDirty('offer', true));
+$('#offerForm').addEventListener('change', (e) => {
+  if (e.target.name !== 'festival_name') return;
+  const n = applyFestivalDetails($('#offerForm'), e.target.value);
+  if (n) toast(`Filled ${n} festival detail${n > 1 ? 's' : ''} from Settings`);
+});
 $('#advanceForm').addEventListener('input', () => setDirty('advance', true));
 
 function setDirty(which, v) {
@@ -297,6 +302,7 @@ initNav(id ? 'offers' : 'new').then(async () => {
       PF.OFFER_SECTIONS.filter(s => s.festivalWide).flatMap(s => s.fields)
         .filter(f => !f.internal).forEach(f => { pre[f.key] = src[f.key]; });
       renderSections($('#offerForm'), PF.OFFER_SECTIONS, pre);
+      applyFestivalDetails($('#offerForm'), pre.festival_name);
       $('#title').textContent = 'New artist — ' + (src.festival_name || 'festival');
       $('#subtitle').textContent = 'Festival details, radius, provisions and terms are copied in. Add the artist, slot and deal.';
       $('#f_artist_name').focus();
@@ -304,6 +310,7 @@ initNav(id ? 'offers' : 'new').then(async () => {
       // Only one festival on the list? Pick it.
       const opts = PF.OFFER_FIELDS.find(f => f.key === 'festival_name').options;
       renderSections($('#offerForm'), PF.OFFER_SECTIONS, opts.length === 1 ? { festival_name: opts[0] } : {});
+      if (opts.length === 1) applyFestivalDetails($('#offerForm'), opts[0]);
       $(opts.length === 1 ? '#f_artist_name' : '#f_festival_name').focus();
     }
     return;

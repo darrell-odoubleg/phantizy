@@ -100,6 +100,8 @@ function addMissingColumns(table, fields) {
   }
 }
 addMissingColumns('offers', OFFER_FIELDS);
+// Festival-wide defaults (JSON of festivalWide offer fields) used to fill new offers.
+addMissingColumns('festivals', [{ key: 'details' }]);
 addMissingColumns('advances', ADVANCE_FIELDS);
 
 const DEFAULT_CHECKLIST = [

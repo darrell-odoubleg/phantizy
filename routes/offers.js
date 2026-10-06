@@ -119,8 +119,8 @@ function createOffer(values, user) {
     const offerId = info.lastInsertRowid;
     updateRow('offers', 'id', offerId, values);
     // Advance sheet starts with what the offer already knows.
-    db.prepare('INSERT INTO advances (offer_id, headliner_set_time, ground_transport) VALUES (?, ?, ?)')
-      .run(offerId, values.show_time || null, values.ground_transport || null);
+    db.prepare('INSERT INTO advances (offer_id, doors_time, headliner_set_time, ground_transport) VALUES (?, ?, ?, ?)')
+      .run(offerId, values.festival_gates || null, values.show_time || null, values.ground_transport || null);
     const ins = db.prepare('INSERT INTO checklist_items (offer_id, label, auto_key, position) VALUES (?, ?, ?, ?)');
     db.prepare('SELECT label, auto_key, position FROM checklist_template ORDER BY position, id').all()
       .forEach(t => ins.run(offerId, t.label, t.auto_key, t.position));

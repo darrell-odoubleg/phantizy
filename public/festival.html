@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Festival details · Phantizy Productions</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" type="image/png" href="/icon-64.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">Festival details</h1>
+  <p class="subtitle">These fill in automatically when this festival is picked on an offer. Offers already created keep what they have. <a href="/admin.html">Back to Settings</a></p>
+  <form id="form" novalidate></form>
+  <div class="savebar">
+    <button class="btn" id="save">Save details</button>
+    <span class="msg" id="msg"></span>
+  </div>
+</div>
+<script src="/fields.js"></script>
+<script src="/app.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const id = Number(new URLSearchParams(location.search).get('id'));
+// The festival-wide sections of the offer sheet, minus the festival name itself.
+const SECTIONS = PF.OFFER_SECTIONS.filter(s => s.festivalWide)
+  .map(s => ({ ...s, fields: s.fields.filter(f => f.key !== 'festival_name' && !f.internal) }))
+  .filter(s => s.fields.length);
+let dirty = false;
+
+$('#form').addEventListener('input', () => { dirty = true; $('#msg').innerHTML = 'Unsaved changes<span class="dirty-dot"></span>'; });
+window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+$('#save').onclick = async () => {
+  $('#save').disabled = true;
+  try {
+    await api(`/festival-options/${id}/details`, { method: 'PUT', body: readSections($('#form'), SECTIONS) });
+    dirty = false; $('#msg').textContent = ''; toast('Festival details saved');
+  } catch (e) { toast(e.message, true); }
+  finally { $('#save').disabled = false; }
+};
+
+initNav('admin').then(async () => {
+  if (ME.role !== 'admin') { location.href = '/admin.html'; return; }
+  try {
+    const f = await api('/festival-options/' + id);
+    $('#title').textContent = f.name;
+    document.title = f.name + ' · Phantizy Productions';
+    renderSections($('#form'), SECTIONS, f.details);
+  } catch (e) {
+    $('#title').textContent = 'Festival not found';
+    $('#save').hidden = true;
+  }
+});
+</script>
+</body>
+</html>
