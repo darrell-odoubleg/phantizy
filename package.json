@@ -1,0 +1,20 @@
+{
+  "name": "phantizy-productions",
+  "version": "1.0.0",
+  "description": "Phantizy Productions promoter site: offers, contracts, advancing, riders, checklists",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "create-user": "node scripts/create-user.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^11.10.0",
+    "better-sqlite3-session-store": "^0.1.0",
+    "dotenv": "^18.0.5",
+    "express": "^4.22.3",
+    "express-session": "^1.19.0",
+    "multer": "^2.4.0",
+    "pdfkit": "^0.20.2"
+  }
+}

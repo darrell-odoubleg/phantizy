@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings · Phantizy Productions</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%235B2A86%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-family=%27Arial%27 font-weight=%27bold%27 font-size=%2720%27 fill=%27white%27 text-anchor=%27middle%27%3EP%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+<div class="wrap">
+  <h1 id="pageTitle">Account</h1>
+  <p class="subtitle" id="pageSub">Change your password.</p>
+
+  <div class="card" style="max-width:520px">
+    <h2>My password</h2>
+    <form id="pwForm">
+      <label for="pwCur">Current password</label>
+      <input type="password" id="pwCur" autocomplete="current-password" required>
+      <label for="pwNew">New password (8+ characters)</label>
+      <input type="password" id="pwNew" autocomplete="new-password" minlength="8" required>
+      <button class="btn">Change password</button>
+    </form>
+  </div>
+
+  <div id="adminOnly" hidden>
+    <div class="card">
+      <h2>Users</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody id="userRows"></tbody>
+      </table></div>
+      <h2 style="margin-top:22px">Add a user</h2>
+      <form id="addUser" class="grid">
+        <div><label for="uName" class="req">Name</label><input type="text" id="uName" required></div>
+        <div><label for="uEmail" class="req">Email</label><input type="email" id="uEmail" required></div>
+        <div><label for="uPw" class="req">Temporary password</label><input type="text" id="uPw" minlength="8" required autocomplete="off"></div>
+        <div><label for="uRole">Role</label><select id="uRole"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
+        <div class="wide"><button class="btn">Add user</button>
+          <span style="font-size:12px;color:var(--dim);margin-left:8px">Send them the password yourself. They can change it under Account.</span></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Default checklist for new offers</h2>
+      <p style="margin:-6px 0 14px;color:var(--dim);font-size:13px">Every new offer starts with this list. Changes here don't affect offers already created. Items tagged <span class="auto">auto</span> tick themselves.</p>
+      <div id="tplItems"></div>
+      <div class="add-row">
+        <input type="text" id="tplNew" placeholder="Add an item…">
+        <button class="btn sm outline" id="tplAddBtn">Add</button>
+      </div>
+      <div class="btn-row" style="margin-top:14px"><button class="btn" id="tplSave">Save checklist</button></div>
+    </div>
+  </div>
+</div>
+<script src="/fields.js"></script>
+<script src="/app.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const AUTO_LABELS = { status_sent: 'when status → Sent', status_accepted: 'when status → Accepted', status_completed: 'when status → Completed', doc_contract: 'when a contract is uploaded', doc_rider: 'when a rider/stage plot is uploaded' };
+let tpl = [];
+
+$('#pwForm').onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await api('/me/password', { method: 'POST', body: { current: $('#pwCur').value, next: $('#pwNew').value } });
+    e.target.reset(); toast('Password changed');
+  } catch (ex) { toast(ex.message, true); }
+};
+
+async function loadUsers() {
+  const users = await api('/users');
+  $('#userRows').innerHTML = users.map(u => `
+    <tr data-id="${u.id}">
+      <td>${esc(u.name)}</td><td>${esc(u.email)}</td>
+      <td><select data-f="role" style="margin:0;width:auto"${u.id === ME.id ? ' disabled' : ''}>
+        <option value="staff"${u.role === 'staff' ? ' selected' : ''}>Staff</option>
+        <option value="admin"${u.role === 'admin' ? ' selected' : ''}>Admin</option></select></td>
+      <td>${u.active ? 'Active' : '<span style="color:var(--danger)">Disabled</span>'}</td>
+      <td class="btn-row" style="justify-content:flex-end">
+        <button class="btn outline sm" data-act="pw">Reset password</button>
+        ${u.id === ME.id ? '' : `<button class="btn ${u.active ? 'danger' : 'outline'} sm" data-act="toggle">${u.active ? 'Disable' : 'Enable'}</button>`}
+      </td>
+    </tr>`).join('');
+  $('#userRows').dataset.users = JSON.stringify(users);
+}
+$('#userRows').onchange = async (e) => {
+  const tr = e.target.closest('tr');
+  try { await api('/users/' + tr.dataset.id, { method: 'PATCH', body: { role: e.target.value } }); toast('Role updated'); }
+  catch (ex) { toast(ex.message, true); loadUsers(); }
+};
+$('#userRows').onclick = async (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const uid = b.closest('tr').dataset.id;
+  const user = JSON.parse($('#userRows').dataset.users).find(u => String(u.id) === uid);
+  try {
+    if (b.dataset.act === 'pw') {
+      const pw = prompt(`New password for ${user.name} (8+ characters):`);
+      if (!pw) return;
+      await api('/users/' + uid, { method: 'PATCH', body: { password: pw } });
+      toast('Password reset');
+    } else {
+      if (user.active && !confirm(`Disable ${user.name}? They'll be signed out right away.`)) return;
+      await api('/users/' + uid, { method: 'PATCH', body: { active: !user.active } });
+      loadUsers();
+    }
+  } catch (ex) { toast(ex.message, true); }
+};
+$('#addUser').onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await api('/users', { method: 'POST', body: { name: $('#uName').value, email: $('#uEmail').value, password: $('#uPw').value, role: $('#uRole').value } });
+    e.target.reset(); toast('User added'); loadUsers();
+  } catch (ex) { toast(ex.message, true); }
+};
+
+function renderTpl() {
+  $('#tplItems').innerHTML = tpl.map((t, i) => `
+    <div class="cl-item" data-i="${i}">
+      <span style="color:var(--dim);width:22px;text-align:right;font-size:12px">${i + 1}.</span>
+      <input type="text" value="${esc(t.label)}" style="margin:0;flex:1">
+      ${t.auto_key ? `<span class="auto" title="${esc(AUTO_LABELS[t.auto_key] || '')}">auto</span>` : ''}
+      <button class="icon-btn" data-mv="-1" title="Move up" style="font-size:14px">▲</button>
+      <button class="icon-btn" data-mv="1" title="Move down" style="font-size:14px">▼</button>
+      <button class="icon-btn" data-del title="Remove">&times;</button>
+    </div>`).join('');
+}
+$('#tplItems').oninput = (e) => { const r = e.target.closest('[data-i]'); tpl[r.dataset.i].label = e.target.value; };
+$('#tplItems').onclick = (e) => {
+  const r = e.target.closest('[data-i]'); if (!r) return;
+  const i = Number(r.dataset.i);
+  if (e.target.closest('[data-del]')) tpl.splice(i, 1);
+  const mv = e.target.closest('[data-mv]');
+  if (mv) { const j = i + Number(mv.dataset.mv); if (j >= 0 && j < tpl.length) [tpl[i], tpl[j]] = [tpl[j], tpl[i]]; }
+  renderTpl();
+};
+$('#tplAddBtn').onclick = () => {
+  const v = $('#tplNew').value.trim(); if (!v) return;
+  tpl.push({ label: v, auto_key: null }); $('#tplNew').value = ''; renderTpl();
+};
+$('#tplNew').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#tplAddBtn').click(); } };
+$('#tplSave').onclick = async () => {
+  try { await api('/checklist-template', { method: 'PUT', body: { items: tpl } }); toast('Default checklist saved'); }
+  catch (ex) { toast(ex.message, true); }
+};
+
+initNav('admin').then(async () => {
+  if (ME.role !== 'admin') return;
+  $('#pageTitle').textContent = 'Settings';
+  $('#pageSub').textContent = 'Your password, the team, and the checklist every new offer starts with.';
+  $('#adminOnly').hidden = false;
+  loadUsers();
+  tpl = await api('/checklist-template');
+  renderTpl();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,264 @@
+// offers.js — offers, advance sheet, document uploads (contracts / riders),
+// per-offer checklist, and the offer / advance sheet PDFs.
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const express = require('express');
+const multer = require('multer');
+const db = require('../db/init');
+const { requireAdmin } = require('../server/auth');
+const { OFFER_FIELDS, ADVANCE_FIELDS, STATUSES, DOC_KINDS } = require('../public/fields');
+const { offerSheetPdf, advanceSheetPdf } = require('../server/pdf');
+
+const router = express.Router();
+const UPLOAD_DIR = db.UPLOAD_DIR;
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const ALLOWED_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.heic', '.txt', '.rtf', '.pages']);
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const dir = path.join(UPLOAD_DIR, String(Number(req.params.id)));
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      cb(null, crypto.randomBytes(12).toString('hex') + path.extname(file.originalname).toLowerCase());
+    },
+  }),
+  limits: { fileSize: 30 * 1024 * 1024, files: 10 },
+  fileFilter: (req, file, cb) => {
+    const ok = ALLOWED_EXT.has(path.extname(file.originalname).toLowerCase());
+    cb(ok ? null : Object.assign(new Error('That file type is not allowed (PDF, Word, Excel, images, text)'), { status: 400 }), ok);
+  },
+});
+
+// ---- helpers ----
+
+function pick(body, fields) {
+  const out = {};
+  for (const f of fields) {
+    if (!(f.key in body)) continue;
+    let v = body[f.key];
+    if (v === '' || v === undefined) v = null;
+    else if (f.type === 'number' || f.type === 'money') {
+      v = Number(String(v).replace(/[$,]/g, ''));
+      if (!isFinite(v)) v = null;
+    } else v = String(v);
+    out[f.key] = v;
+  }
+  return out;
+}
+
+function updateRow(table, whereCol, whereVal, values) {
+  const keys = Object.keys(values);
+  if (!keys.length) return;
+  const sets = keys.map(k => `${k} = @${k}`).join(', ');
+  db.prepare(`UPDATE ${table} SET ${sets}, updated_at = datetime('now') WHERE ${whereCol} = @__id`)
+    .run({ ...values, __id: whereVal });
+}
+
+function autoCheck(offerId, key, who) {
+  db.prepare(`UPDATE checklist_items SET done = 1, done_by_name = ?, done_at = datetime('now')
+              WHERE offer_id = ? AND auto_key = ? AND done = 0`).run(who, offerId, key);
+}
+
+function getOffer(id) {
+  return db.prepare('SELECT * FROM offers WHERE id = ?').get(id);
+}
+
+function loadOffer(req, res, next) {
+  const offer = getOffer(Number(req.params.id));
+  if (!offer) return res.status(404).json({ error: 'Offer not found' });
+  req.offer = offer;
+  next();
+}
+
+// ---- offers ----
+
+router.get('/offers', (req, res) => {
+  const { status, q } = req.query;
+  const where = [];
+  const params = {};
+  if (status && STATUSES.includes(status)) { where.push('o.status = @status'); params.status = status; }
+  if (q) {
+    where.push("(o.artist_name LIKE @q OR o.venue_name LIKE @q OR o.event_name LIKE @q OR o.venue_city LIKE @q OR o.agency LIKE @q)");
+    params.q = `%${q}%`;
+  }
+  const rows = db.prepare(`
+    SELECT o.id, o.status, o.artist_name, o.event_name, o.event_date, o.venue_name, o.venue_city, o.venue_state,
+           o.guarantee, o.deal_type, o.agency, o.created_by_name, o.updated_at,
+           (SELECT COUNT(*) FROM checklist_items c WHERE c.offer_id = o.id) AS checklist_total,
+           (SELECT COUNT(*) FROM checklist_items c WHERE c.offer_id = o.id AND c.done = 1) AS checklist_done,
+           (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind = 'contract') AS contract_count,
+           (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind IN ('rider_technical','rider_hospitality','stage_plot')) AS rider_count
+    FROM offers o
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    ORDER BY (o.event_date IS NULL), o.event_date, o.id DESC`).all(params);
+  res.json(rows);
+});
+
+function createOffer(values, user) {
+  return db.transaction(() => {
+    const info = db.prepare('INSERT INTO offers (created_by, created_by_name) VALUES (?, ?)').run(user.id, user.name);
+    const offerId = info.lastInsertRowid;
+    updateRow('offers', 'id', offerId, values);
+    // Advance sheet starts with what the offer already knows.
+    db.prepare('INSERT INTO advances (offer_id, doors_time, ground_transport) VALUES (?, ?, ?)')
+      .run(offerId, values.doors_time || null, values.ground_transport || null);
+    const ins = db.prepare('INSERT INTO checklist_items (offer_id, label, auto_key, position) VALUES (?, ?, ?, ?)');
+    db.prepare('SELECT label, auto_key, position FROM checklist_template ORDER BY position, id').all()
+      .forEach(t => ins.run(offerId, t.label, t.auto_key, t.position));
+    return offerId;
+  })();
+}
+
+router.post('/offers', (req, res) => {
+  const values = pick(req.body || {}, OFFER_FIELDS);
+  if (!values.artist_name) return res.status(400).json({ error: 'Artist is required' });
+  res.json({ id: createOffer(values, req.user) });
+});
+
+router.get('/offers/:id', loadOffer, (req, res) => {
+  const id = req.offer.id;
+  res.json({
+    offer: req.offer,
+    advance: db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(id) || {},
+    documents: db.prepare('SELECT id, kind, label, original_name, mime_type, size, uploaded_by_name, uploaded_at FROM documents WHERE offer_id = ? ORDER BY uploaded_at DESC').all(id),
+    checklist: db.prepare('SELECT * FROM checklist_items WHERE offer_id = ? ORDER BY position, id').all(id),
+  });
+});
+
+router.put('/offers/:id', loadOffer, (req, res) => {
+  const values = pick(req.body || {}, OFFER_FIELDS);
+  if ('artist_name' in values && !values.artist_name) return res.status(400).json({ error: 'Artist is required' });
+  updateRow('offers', 'id', req.offer.id, values);
+  res.json({ ok: true });
+});
+
+router.patch('/offers/:id/status', loadOffer, (req, res) => {
+  const status = req.body && req.body.status;
+  if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown status' });
+  db.prepare("UPDATE offers SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, req.offer.id);
+  const id = req.offer.id;
+  if (status === 'sent') autoCheck(id, 'status_sent', req.user.name);
+  if (status === 'accepted') { autoCheck(id, 'status_sent', req.user.name); autoCheck(id, 'status_accepted', req.user.name); }
+  if (status === 'completed') autoCheck(id, 'status_completed', req.user.name);
+  res.json({ ok: true });
+});
+
+// Copies the deal terms into a new draft with a fresh advance + checklist.
+router.post('/offers/:id/duplicate', loadOffer, (req, res) => {
+  const values = {};
+  for (const f of OFFER_FIELDS) values[f.key] = req.offer[f.key];
+  values.event_date = null; values.alt_dates = null; values.offer_expires = null;
+  res.json({ id: createOffer(values, req.user) });
+});
+
+router.delete('/offers/:id', requireAdmin, loadOffer, (req, res) => {
+  db.prepare('DELETE FROM offers WHERE id = ?').run(req.offer.id);
+  fs.rmSync(path.join(UPLOAD_DIR, String(req.offer.id)), { recursive: true, force: true });
+  res.json({ ok: true });
+});
+
+// ---- advance sheet ----
+
+router.put('/offers/:id/advance', loadOffer, (req, res) => {
+  db.prepare('INSERT OR IGNORE INTO advances (offer_id) VALUES (?)').run(req.offer.id);
+  updateRow('advances', 'offer_id', req.offer.id, pick(req.body || {}, ADVANCE_FIELDS));
+  res.json({ ok: true });
+});
+
+// ---- PDFs ----
+
+function sendPdf(res, filename, build) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename.replace(/[^\w.\- ]+/g, '')}"`);
+  build(res);
+}
+function pdfName(offer, kind) {
+  return `${kind} - ${offer.artist_name || 'Offer'}${offer.event_date ? ' - ' + offer.event_date : ''}.pdf`;
+}
+
+router.get('/offers/:id/offer-sheet.pdf', loadOffer, (req, res) => {
+  sendPdf(res, pdfName(req.offer, 'Offer'), out => offerSheetPdf(req.offer, out));
+});
+
+router.get('/offers/:id/advance-sheet.pdf', loadOffer, (req, res) => {
+  const advance = db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(req.offer.id) || {};
+  sendPdf(res, pdfName(req.offer, 'Advance'), out => advanceSheetPdf(req.offer, advance, out));
+});
+
+// ---- documents (contracts, riders, stage plots) ----
+
+router.post('/offers/:id/documents', loadOffer, upload.array('files', 10), (req, res) => {
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: 'Choose a file to upload' });
+  const kind = DOC_KINDS[req.body.kind] ? req.body.kind : 'other';
+  const label = req.body.label ? String(req.body.label).slice(0, 200) : null;
+  const ins = db.prepare(`INSERT INTO documents (offer_id, kind, label, original_name, stored_name, mime_type, size, uploaded_by_name)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  db.transaction(() => files.forEach(f => ins.run(req.offer.id, kind, label, f.originalname, f.filename, f.mimetype, f.size, req.user.name)))();
+  if (kind === 'contract') autoCheck(req.offer.id, 'doc_contract', req.user.name);
+  if (kind.startsWith('rider') || kind === 'stage_plot') autoCheck(req.offer.id, 'doc_rider', req.user.name);
+  res.json({ ok: true, count: files.length });
+});
+
+function loadDoc(req, res, next) {
+  const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(Number(req.params.docId));
+  if (!doc) return res.status(404).json({ error: 'File not found' });
+  req.doc = doc;
+  req.docPath = path.join(UPLOAD_DIR, String(doc.offer_id), path.basename(doc.stored_name));
+  next();
+}
+
+router.get('/documents/:docId/download', loadDoc, (req, res) => {
+  const inline = req.query.view === '1';
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Only PDFs and images are shown inline; everything else downloads.
+  const viewable = /^(application\/pdf|image\/(png|jpeg))$/.test(req.doc.mime_type || '');
+  if (inline && viewable) {
+    res.type(req.doc.mime_type);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(req.doc.original_name)}"`);
+    return res.sendFile(req.docPath);
+  }
+  res.download(req.docPath, req.doc.original_name);
+});
+
+router.delete('/documents/:docId', loadDoc, (req, res) => {
+  db.prepare('DELETE FROM documents WHERE id = ?').run(req.doc.id);
+  fs.rmSync(req.docPath, { force: true });
+  res.json({ ok: true });
+});
+
+// ---- checklist ----
+
+router.post('/offers/:id/checklist', loadOffer, (req, res) => {
+  const label = String((req.body && req.body.label) || '').trim();
+  if (!label) return res.status(400).json({ error: 'Item text is required' });
+  const max = db.prepare('SELECT COALESCE(MAX(position), -1) AS m FROM checklist_items WHERE offer_id = ?').get(req.offer.id).m;
+  const info = db.prepare('INSERT INTO checklist_items (offer_id, label, position, due_date) VALUES (?, ?, ?, ?)')
+    .run(req.offer.id, label, max + 1, req.body.due_date || null);
+  res.json({ id: info.lastInsertRowid });
+});
+
+router.patch('/checklist/:itemId', (req, res) => {
+  const item = db.prepare('SELECT * FROM checklist_items WHERE id = ?').get(Number(req.params.itemId));
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  const { done, label, due_date } = req.body || {};
+  if (done !== undefined) {
+    db.prepare('UPDATE checklist_items SET done = ?, done_by_name = ?, done_at = ? WHERE id = ?')
+      .run(done ? 1 : 0, done ? req.user.name : null, done ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null, item.id);
+  }
+  if (label !== undefined && String(label).trim()) db.prepare('UPDATE checklist_items SET label = ? WHERE id = ?').run(String(label).trim(), item.id);
+  if (due_date !== undefined) db.prepare('UPDATE checklist_items SET due_date = ? WHERE id = ?').run(due_date || null, item.id);
+  res.json(db.prepare('SELECT * FROM checklist_items WHERE id = ?').get(item.id));
+});
+
+router.delete('/checklist/:itemId', (req, res) => {
+  db.prepare('DELETE FROM checklist_items WHERE id = ?').run(Number(req.params.itemId));
+  res.json({ ok: true });
+});
+
+module.exports = router;

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offer · Phantizy Productions</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%235B2A86%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-family=%27Arial%27 font-weight=%27bold%27 font-size=%2720%27 fill=%27white%27 text-anchor=%27middle%27%3EP%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+<div class="wrap">
+  <div class="head-row">
+    <div>
+      <h1 id="title">New offer</h1>
+      <p class="subtitle" id="subtitle">Fill in what you know. Everything except the artist can wait.</p>
+    </div>
+    <div class="btn-row" id="headActions" hidden>
+      <select id="status" style="width:auto;margin:0"></select>
+      <button class="btn outline sm" id="dupBtn" title="Copy the deal terms into a new draft">Duplicate</button>
+      <button class="btn danger sm" id="delBtn" hidden>Delete</button>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs" hidden>
+    <button data-tab="offer" class="active">Offer sheet</button>
+    <button data-tab="advance">Advance sheet</button>
+    <button data-tab="docs">Contracts &amp; riders <span class="count" id="docCount">0</span></button>
+    <button data-tab="checklist">Checklist <span class="count" id="clCount">0/0</span></button>
+  </div>
+
+  <!-- Offer sheet -->
+  <section class="tab-panel" data-panel="offer">
+    <form id="offerForm" novalidate></form>
+    <div class="savebar">
+      <button class="btn" id="saveOffer">Create offer</button>
+      <a class="btn outline" id="offerPdf" target="_blank" hidden>Offer sheet PDF</a>
+      <span class="msg" id="offerMsg"></span>
+    </div>
+  </section>
+
+  <!-- Advance sheet -->
+  <section class="tab-panel" data-panel="advance" hidden>
+    <form id="advanceForm" novalidate></form>
+    <div class="savebar">
+      <button class="btn" id="saveAdvance">Save advance</button>
+      <a class="btn outline" id="advancePdf" target="_blank">Advance sheet PDF</a>
+      <span class="msg" id="advanceMsg"></span>
+    </div>
+  </section>
+
+  <!-- Documents -->
+  <section class="tab-panel" data-panel="docs" hidden>
+    <div class="card">
+      <h2>Upload</h2>
+      <div class="grid">
+        <div><label for="docKind">Type</label><select id="docKind"></select></div>
+        <div><label for="docLabel">Note (optional)</label><input type="text" id="docLabel" placeholder="e.g. Signed by agent 10/6"></div>
+      </div>
+      <div class="dropzone" id="drop">
+        Drag files here, or <label for="docFiles" style="display:inline;text-transform:none;letter-spacing:0;font-size:inherit;color:var(--accent);cursor:pointer;text-decoration:underline">choose files</label>
+        <input type="file" id="docFiles" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.heic,.txt,.rtf,.pages">
+        <div style="font-size:12px;margin-top:6px">PDF, Word, Excel or images · up to 30 MB each</div>
+      </div>
+    </div>
+    <div class="card" id="docList"></div>
+  </section>
+
+  <!-- Checklist -->
+  <section class="tab-panel" data-panel="checklist" hidden>
+    <div class="card">
+      <div class="cl-summary"><strong id="clPct">0%</strong><div class="bar"><span id="clBar"></span></div></div>
+      <div id="clItems"></div>
+      <form class="add-row" id="clAdd">
+        <input type="text" id="clNew" placeholder="Add a task for this show…">
+        <button class="btn sm">Add</button>
+      </form>
+      <p style="font-size:12px;color:var(--dim);margin:12px 0 0">Items tagged <span class="auto">auto</span> tick themselves when the status changes or a contract/rider is uploaded. Admins can change the default list in Settings.</p>
+    </div>
+  </section>
+</div>
+
+<script src="/fields.js"></script>
+<script src="/app.js"></script>
+<script>
+const id = Number(new URLSearchParams(location.search).get('id')) || null;
+const $ = (s) => document.querySelector(s);
+let data = null;
+let dirty = { offer: false, advance: false };
+
+renderSections($('#offerForm'), PF.OFFER_SECTIONS);
+$('#offerForm').addEventListener('input', () => setDirty('offer', true));
+$('#advanceForm').addEventListener('input', () => setDirty('advance', true));
+
+function setDirty(which, v) {
+  dirty[which] = v;
+  $(which === 'offer' ? '#offerMsg' : '#advanceMsg').innerHTML = v ? 'Unsaved changes<span class="dirty-dot"></span>' : '';
+}
+window.addEventListener('beforeunload', (e) => { if (dirty.offer || dirty.advance) { e.preventDefault(); e.returnValue = ''; } });
+
+// ---- tabs ----
+$('#tabs').onclick = (e) => {
+  const b = e.target.closest('button[data-tab]'); if (!b) return;
+  showTab(b.dataset.tab);
+  history.replaceState(null, '', `?id=${id}#${b.dataset.tab}`);
+};
+function showTab(t) {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tab-panel').forEach(p => p.hidden = p.dataset.panel !== t);
+}
+
+// ---- load ----
+async function load() {
+  data = await api('/offers/' + id);
+  const o = data.offer;
+  document.title = `${o.artist_name} · Phantizy Productions`;
+  $('#title').textContent = o.artist_name + (o.event_date ? ' — ' + fmtDate(o.event_date) : '');
+  $('#subtitle').textContent = [o.venue_name, [o.venue_city, o.venue_state].filter(Boolean).join(', '),
+    o.created_by_name && `Created by ${o.created_by_name}`].filter(Boolean).join('  ·  ');
+  $('#headActions').hidden = false;
+  $('#tabs').hidden = false;
+  $('#delBtn').hidden = ME.role !== 'admin';
+  $('#status').innerHTML = PF.STATUSES.map(s => `<option value="${s}"${s === o.status ? ' selected' : ''}>${STATUS_LABEL[s]}</option>`).join('');
+  $('#saveOffer').textContent = 'Save offer';
+  $('#offerPdf').hidden = false;
+  $('#offerPdf').href = `/api/offers/${id}/offer-sheet.pdf`;
+  $('#advancePdf').href = `/api/offers/${id}/advance-sheet.pdf`;
+  if (!dirty.offer) renderSections($('#offerForm'), PF.OFFER_SECTIONS, o);
+  if (!dirty.advance) renderSections($('#advanceForm'), PF.ADVANCE_SECTIONS, data.advance);
+  renderDocs();
+  renderChecklist();
+}
+
+// ---- offer ----
+$('#saveOffer').onclick = async () => {
+  const body = readSections($('#offerForm'), PF.OFFER_SECTIONS);
+  if (!body.artist_name) { toast('Artist is required', true); $('#f_artist_name').focus(); return; }
+  $('#saveOffer').disabled = true;
+  try {
+    if (!id) {
+      const r = await api('/offers', { method: 'POST', body });
+      dirty.offer = false;
+      location.href = '/offer.html?id=' + r.id;
+      return;
+    }
+    await api('/offers/' + id, { method: 'PUT', body });
+    setDirty('offer', false);
+    toast('Offer saved');
+    await load();
+  } catch (e) { toast(e.message, true); }
+  finally { $('#saveOffer').disabled = false; }
+};
+// Make sure the PDF reflects what's on screen.
+for (const [btn, which, save] of [['#offerPdf', 'offer', '#saveOffer'], ['#advancePdf', 'advance', '#saveAdvance']]) {
+  $(btn).addEventListener('click', (e) => {
+    if (dirty[which]) { e.preventDefault(); toast('Save your changes first, then open the PDF', true); }
+  });
+}
+
+$('#status').onchange = async (e) => {
+  try {
+    await api(`/offers/${id}/status`, { method: 'PATCH', body: { status: e.target.value } });
+    toast('Status: ' + STATUS_LABEL[e.target.value]);
+    await load();
+  } catch (ex) { toast(ex.message, true); }
+};
+$('#dupBtn').onclick = async () => {
+  if (!confirm('Create a new draft with the same artist, venue and deal terms (no date)?')) return;
+  const r = await api(`/offers/${id}/duplicate`, { method: 'POST' });
+  location.href = '/offer.html?id=' + r.id;
+};
+$('#delBtn').onclick = async () => {
+  if (!confirm('Delete this offer, its advance sheet, checklist and ALL uploaded files? This cannot be undone.')) return;
+  await api('/offers/' + id, { method: 'DELETE' });
+  dirty = { offer: false, advance: false };
+  location.href = '/';
+};
+
+// ---- advance ----
+$('#saveAdvance').onclick = async () => {
+  $('#saveAdvance').disabled = true;
+  try {
+    await api(`/offers/${id}/advance`, { method: 'PUT', body: readSections($('#advanceForm'), PF.ADVANCE_SECTIONS) });
+    setDirty('advance', false);
+    toast('Advance saved');
+  } catch (e) { toast(e.message, true); }
+  finally { $('#saveAdvance').disabled = false; }
+};
+
+// ---- documents ----
+$('#docKind').innerHTML = Object.entries(PF.DOC_KINDS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+
+function renderDocs() {
+  const docs = data.documents;
+  $('#docCount').textContent = docs.length;
+  if (!docs.length) { $('#docList').innerHTML = '<div class="empty">No contracts or riders uploaded yet.</div>'; return; }
+  $('#docList').innerHTML = Object.entries(PF.DOC_KINDS).map(([kind, label]) => {
+    const list = docs.filter(d => d.kind === kind);
+    if (!list.length) return '';
+    return `<div class="doc-group"><h3>${esc(label)}${list.length > 1 ? 's' : ''}</h3>${list.map(d => `
+      <div class="doc-row">
+        <div class="name">${esc(d.original_name)}
+          <span class="meta">${d.label ? esc(d.label) + ' · ' : ''}${fmtSize(d.size)} · ${esc(d.uploaded_by_name || '')} · ${fmtStamp(d.uploaded_at)}</span></div>
+        <div class="btn-row">
+          ${/^(application\/pdf|image\/(png|jpeg))$/.test(d.mime_type) ? `<a class="btn outline sm" target="_blank" href="/api/documents/${d.id}/download?view=1">View</a>` : ''}
+          <a class="btn outline sm" href="/api/documents/${d.id}/download">Download</a>
+          <button class="icon-btn" title="Delete" data-del-doc="${d.id}">&times;</button>
+        </div>
+      </div>`).join('')}</div>`;
+  }).join('');
+}
+$('#docList').onclick = async (e) => {
+  const b = e.target.closest('[data-del-doc]'); if (!b) return;
+  if (!confirm('Delete this file?')) return;
+  await api('/documents/' + b.dataset.delDoc, { method: 'DELETE' });
+  toast('File deleted'); load();
+};
+
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const fd = new FormData();
+  fd.append('kind', $('#docKind').value);
+  fd.append('label', $('#docLabel').value);
+  for (const f of files) fd.append('files', f);
+  $('#drop').style.opacity = 0.5;
+  try {
+    const r = await api(`/offers/${id}/documents`, { method: 'POST', body: fd });
+    toast(`Uploaded ${r.count} file${r.count > 1 ? 's' : ''}`);
+    $('#docLabel').value = '';
+    await load();
+  } catch (e) { toast(e.message, true); }
+  finally { $('#drop').style.opacity = 1; $('#docFiles').value = ''; }
+}
+$('#docFiles').onchange = (e) => uploadFiles([...e.target.files]);
+const drop = $('#drop');
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); uploadFiles([...e.dataTransfer.files]); };
+
+// ---- checklist ----
+function renderChecklist() {
+  const items = data.checklist;
+  const done = items.filter(i => i.done).length;
+  const pct = items.length ? Math.round(100 * done / items.length) : 0;
+  $('#clCount').textContent = `${done}/${items.length}`;
+  $('#clPct').textContent = pct + '%';
+  $('#clBar').style.width = pct + '%';
+  const today = new Date().toISOString().slice(0, 10);
+  $('#clItems').innerHTML = items.length ? items.map(i => `
+    <div class="cl-item ${i.done ? 'done' : ''}" data-id="${i.id}">
+      <input type="checkbox" ${i.done ? 'checked' : ''} aria-label="${esc(i.label)}">
+      <div class="text">
+        <span class="label">${esc(i.label)}</span>${i.auto_key ? '<span class="auto">auto</span>' : ''}
+        ${i.done ? `<div class="meta">✓ ${esc(i.done_by_name || '')} · ${fmtStamp(i.done_at)}</div>` : ''}
+      </div>
+      <input type="date" class="due ${!i.done && i.due_date && i.due_date < today ? 'overdue' : ''}" value="${esc(i.due_date || '')}" title="Due date">
+      <button class="icon-btn" title="Remove" data-del>&times;</button>
+    </div>`).join('') : '<div class="empty">No checklist items.</div>';
+}
+$('#clItems').onchange = async (e) => {
+  const row = e.target.closest('.cl-item'); if (!row) return;
+  const body = e.target.type === 'checkbox' ? { done: e.target.checked } : { due_date: e.target.value };
+  try {
+    const updated = await api('/checklist/' + row.dataset.id, { method: 'PATCH', body });
+    Object.assign(data.checklist.find(i => i.id === updated.id), updated);
+    renderChecklist();
+  } catch (ex) { toast(ex.message, true); }
+};
+$('#clItems').onclick = async (e) => {
+  if (!e.target.closest('[data-del]')) return;
+  const row = e.target.closest('.cl-item');
+  if (!confirm('Remove this item from this offer\'s checklist?')) return;
+  await api('/checklist/' + row.dataset.id, { method: 'DELETE' });
+  data.checklist = data.checklist.filter(i => i.id !== Number(row.dataset.id));
+  renderChecklist();
+};
+$('#clAdd').onsubmit = async (e) => {
+  e.preventDefault();
+  const label = $('#clNew').value.trim(); if (!label) return;
+  await api(`/offers/${id}/checklist`, { method: 'POST', body: { label } });
+  $('#clNew').value = '';
+  data = await api('/offers/' + id);
+  renderChecklist();
+};
+
+// ---- boot ----
+initNav(id ? 'offers' : 'new').then(async () => {
+  if (!id) { $('#f_artist_name').focus(); return; }
+  try {
+    await load();
+    const t = location.hash.slice(1);
+    if (['offer', 'advance', 'docs', 'checklist'].includes(t)) showTab(t);
+  } catch (e) {
+    $('#title').textContent = 'Offer not found';
+    $('#subtitle').innerHTML = '<a href="/">Back to offers</a>';
+    document.querySelectorAll('.tab-panel').forEach(p => p.hidden = true);
+  }
+});
+</script>
+</body>
+</html>
