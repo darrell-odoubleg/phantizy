@@ -212,9 +212,45 @@ function advanceSheetPdf(offer, advance, out) {
     { key: 'artist_parking', label: 'Artist parking' },
   ];
   section(doc, 'Performance', ref, offer);
-  for (const s of ADVANCE_SECTIONS) section(doc, s.title, s.fields, advance, s.columns);
+  for (const s of ADVANCE_SECTIONS) {
+    if (s.pdf === 'schedule') scheduleSection(doc, s.title, s.fields, advance, offer);
+    else section(doc, s.title, s.fields, advance, s.columns);
+  }
   footer(doc, `Advance · Offer #${offer.id}`);
   doc.end();
+}
+
+// Schedule on its own page: one event per line, time right-aligned, sorted
+// by time; text fields (schedule notes) follow underneath.
+function scheduleSection(doc, title, fields, data, offer) {
+  const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : 1e9; };
+  const times = fields.filter(f => f.type === 'time' && !blank(data[f.key]))
+    .map((f, i) => ({ f, i })).sort((a, b) => toMin(data[a.f.key]) - toMin(data[b.f.key]) || a.i - b.i).map(x => x.f);
+  const notes = fields.filter(f => f.type !== 'time' && !blank(data[f.key]));
+  if (!times.length && !notes.length) return;
+  doc.addPage();
+  const left = doc.page.margins.left;
+  const width = doc.page.width - left * 2;
+  doc.font('Helvetica-Bold').fontSize(16).fillColor(INK).text(title.toUpperCase(), left, doc.page.margins.top, { characterSpacing: 1 });
+  const sub = [offer.artist_name, fmtDate(offer.event_date), offer.stage].filter(v => !blank(v)).join('  ·  ');
+  if (sub) doc.font('Helvetica').fontSize(11).fillColor(DIM).text(sub, left, doc.y + 2);
+  let y = doc.y + 8;
+  doc.moveTo(left, y).lineTo(left + width, y).lineWidth(1.2).strokeColor(ACCENT).stroke();
+  y += 4;
+  for (const f of times) {
+    const h = 30;
+    doc.font('Helvetica').fontSize(13).fillColor(INK).text(f.label, left + 4, y + 9, { width: width * 0.65 });
+    doc.font('Helvetica-Bold').fontSize(13).fillColor(INK).text(fmtValue(f, data[f.key]), left, y + 9, { width: width - 4, align: 'right' });
+    y += h;
+    doc.moveTo(left, y).lineTo(left + width, y).lineWidth(0.5).strokeColor(RULE).stroke();
+  }
+  y += 14;
+  for (const f of notes) {
+    doc.font('Helvetica').fontSize(7.5).fillColor(DIM).text(f.label.toUpperCase(), left, y, { width, characterSpacing: 0.5 });
+    doc.font('Helvetica').fontSize(10).fillColor(INK).text(fmtValue(f, data[f.key]), left, doc.y + 2, { width });
+    y = doc.y + 10;
+  }
+  doc.y = y + 8;
 }
 
 // Fills {artist}, {festival}, {date}, {stage}, {tm}, {dos_name}, {dos_phone}

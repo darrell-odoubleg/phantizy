@@ -111,7 +111,9 @@
       { key: 'security_contact_phone', label: 'Phone', type: 'tel', festivalDefault: true },
       { key: 'security_contact_email', label: 'Email', type: 'email', festivalDefault: true },
     ]},
-    { title: 'Schedule', fields: [
+    // pdf: 'schedule' = own page on the advance PDF, one event per line with
+    // its time on the right, in time order.
+    { title: 'Schedule', pdf: 'schedule', fields: [
       { key: 'doors_time', label: 'Gates open', type: 'time' },
       { key: 'artist_checkin_time', label: 'Artist arrival', type: 'time' },
       { key: 'load_in_time', label: 'Load in', type: 'time' },
