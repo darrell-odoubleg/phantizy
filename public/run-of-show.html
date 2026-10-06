@@ -60,6 +60,8 @@ function fmtT(t) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); if (!m) return '';
   const h = Number(m[1]); return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
+// Load-in before 9 AM: Performance Time reads "No music before 9:00AM!".
+const earlyLoadIn = (r) => { const m = /^(\d{1,2}):(\d{2})$/.exec(r.time || ''); return !!m && Number(m[1]) < 9; };
 const perfTime = (r) => [fmtT(r.time), fmtT(r.end)].filter(Boolean).join(' – ');
 function remember() {
   const q = new URLSearchParams({ festival: FEST.id, day: DAY });
@@ -106,7 +108,7 @@ function render() {
         <thead><tr><th>Item</th><th>Stage Setup</th><th>Performance Time</th><th>Duration</th></tr></thead>
         <tbody>${t.rows.map(r => `<tr class="${r.co ? 'co-row' : r.offer_id ? 'act-row' : r.fixed ? 'fixed-row' : ''}">
           <td>${r.offer_id || r.li ? `<a href="/offer.html?id=${r.offer_id || r.li}#advance">${esc(r.item)}</a>` : esc(r.item)}</td>
-          <td>${esc(r.li ? [fmtT(r.time), r.setup].filter(Boolean).join(' – ') : r.setup)}</td><td class="nowrap">${r.li ? '' : esc(perfTime(r))}</td><td class="nowrap">${esc(r.duration)}</td></tr>`).join('')}</tbody>
+          <td>${esc(r.li ? [fmtT(r.time), r.setup].filter(Boolean).join(' – ') : r.setup)}</td><td class="nowrap">${r.li ? (earlyLoadIn(r) ? 'No music before 9:00AM!' : '') : esc(perfTime(r))}</td><td class="nowrap">${esc(r.duration)}</td></tr>`).join('')}</tbody>
       </table></div>` : `<div class="empty">No rows yet. Acts appear here once their offers are accepted with this stage and date.</div>`}
       ${file ? `<div class="ros-file">Uploaded file: ${/^(application\/pdf|image\/(png|jpeg))$/.test(file.mime_type) ? `<a target="_blank" href="/api/festival-files/${file.id}/download?view=1">${esc(file.original_name)}</a>` : esc(file.original_name)}
         <span class="meta">${fmtSize(file.size)} · ${esc(file.uploaded_by_name || '')}${built ? ' · not sent, because the table above has rows' : ' · sent in welcome packages'}</span>

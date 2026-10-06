@@ -434,9 +434,11 @@ function runOfShowPdf({ festival, stage, day, rows, highlight, highlightOfferId 
   headerRow();
   const hl = String(highlight || '').trim().toLowerCase();
   (rows || []).forEach((r, n) => {
-    // Load-in rows show their time under Stage Setup, not Performance Time.
+    // Load-in rows show their time under Stage Setup, not Performance Time;
+    // a load in before 9 AM reads "No music before 9:00AM!" there instead.
+    const early = r.li && /^(\d{1,2}):\d{2}$/.test(r.time || '') && Number(r.time.split(':')[0]) < 9;
     const cells = ROS_COLS.map(col => (r.li
-      ? (col.key === 'setup' ? [fmtTime(r.time), r.setup].filter(Boolean).join(' – ') : col.type === 'time' ? '' : String(r[col.key] || ''))
+      ? (col.key === 'setup' ? [fmtTime(r.time), r.setup].filter(Boolean).join(' – ') : col.type === 'time' ? (early ? 'No music before 9:00AM!' : '') : String(r[col.key] || ''))
       : col.type === 'time'
         ? [fmtTime(r.time), fmtTime(r.end)].filter(Boolean).join(' – ')
         : String(r[col.key] || '')));
