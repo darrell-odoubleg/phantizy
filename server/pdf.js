@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
-const { OFFER_SECTIONS, ADVANCE_SECTIONS } = require('../public/fields');
+const { OFFER_SECTIONS, ADVANCE_SECTIONS, WELCOME_ON_OFFER } = require('../public/fields');
 
 const INK = '#1b1b1f';
 const DIM = '#6b6b75';
@@ -170,10 +170,20 @@ function footer(doc, label, totalPages) {
   }
 }
 
-function offerSheetPdf(offer, out) {
+// welcome: the festival's welcome letter; its WELCOME_ON_OFFER sections
+// (catering, lodging, transportation, backline) print under Provided by Festival.
+function offerSheetPdf(offer, out, welcome = {}) {
   const doc = newDoc(out);
   header(doc, 'FESTIVAL OFFER', offer);
-  for (const s of OFFER_SECTIONS) section(doc, s.title, s.fields, offer);
+  const data = { ...offer };
+  const extra = WELCOME_ON_OFFER.map((w, i) => {
+    const sec = (welcome.sections || []).find(s => String(s.heading || '').trim().toLowerCase() === w.heading.toLowerCase());
+    data['_welcome' + i] = sec ? sec.body : '';
+    return { key: '_welcome' + i, label: w.label, type: 'textarea' };
+  });
+  for (const s of OFFER_SECTIONS) {
+    section(doc, s.title, s.title === 'Provided by Festival' ? [...s.fields, ...extra] : s.fields, data);
+  }
 
   // Acceptance block
   ensure(doc, 120);

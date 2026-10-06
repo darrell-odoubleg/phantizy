@@ -110,13 +110,18 @@ function renderW() {
         <button type="button" class="icon-btn" data-mv="1" title="Move down">▼</button>
         <button type="button" class="icon-btn" data-del title="Remove section">&times;</button>
       </div>
-      <textarea data-f="body" rows="${Math.min(10, Math.max(3, (s.body || '').split('\n').length + 1))}" placeholder="Text for this section (leave blank to keep it off the letter)">${esc(s.body)}</textarea>
+      ${/^backline$/i.test(s.heading.trim())
+        ? `<select data-f="body"><option value=""></option>${PF.BACKLINE_OPTIONS.concat(s.body && !PF.BACKLINE_OPTIONS.includes(s.body) ? [s.body] : [])
+            .map(o => `<option${o === s.body ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+        : `<textarea data-f="body" rows="${Math.min(10, Math.max(3, (s.body || '').split('\n').length + 1))}" placeholder="Text for this section (leave blank to keep it off the letter)">${esc(s.body)}</textarea>`}
     </div>`).join('') || '<div class="empty">No sections yet.</div>';
 }
 $('#wSections').addEventListener('input', (e) => {
   const box = e.target.closest('[data-i]'); if (!box || !e.target.dataset.f) return;
   wSections[box.dataset.i][e.target.dataset.f] = e.target.value; wMark();
 });
+// Typing "Backline" as a heading swaps its text box for the dropdown.
+$('#wSections').addEventListener('change', (e) => { if (e.target.dataset.f === 'heading') renderW(); });
 $('#wSections').addEventListener('click', (e) => {
   const box = e.target.closest('[data-i]'); if (!box) return;
   const i = Number(box.dataset.i);

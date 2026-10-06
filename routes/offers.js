@@ -236,7 +236,10 @@ function pdfName(offer, kind) {
 }
 
 router.get('/offers/:id/offer-sheet.pdf', loadOffer, (req, res) => {
-  sendPdf(res, pdfName(req.offer, 'Offer'), out => offerSheetPdf(req.offer, out));
+  const fest = db.prepare('SELECT welcome FROM festivals WHERE name = ?').get(req.offer.festival_name || '');
+  let welcome = {};
+  try { welcome = JSON.parse(fest && fest.welcome) || {}; } catch {}
+  sendPdf(res, pdfName(req.offer, 'Offer'), out => offerSheetPdf(req.offer, out, welcome));
 });
 
 router.get('/offers/:id/advance-sheet.pdf', loadOffer, (req, res) => {

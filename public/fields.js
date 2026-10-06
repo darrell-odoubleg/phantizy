@@ -62,10 +62,6 @@
       { key: 'audio_provided', label: 'Audio', type: 'textarea' },
       { key: 'drum_risers_provided', label: 'Drum risers', type: 'textarea' },
       { key: 'lighting_provided', label: 'Lighting', type: 'textarea' },
-      { key: 'backline_provided_by', label: 'Backline', type: 'select', options: ['Backline provided by artist', 'Backline provided by venue'] },
-      { key: 'hospitality_buyout', label: 'Catering / Hospitality', type: 'textarea' },
-      { key: 'lodging', label: 'Lodging', type: 'textarea' },
-      { key: 'ground_transport', label: 'Transportation', type: 'textarea' },
       { key: 'credentials', label: 'Artist credentials / wristbands' },
       { key: 'guest_list_offer', label: 'Guest list allotment' },
       { key: 'artist_parking', label: 'Artist parking (bus / trailer / vans)' },
@@ -82,6 +78,17 @@
       { key: 'internal_notes', label: 'Internal notes (never printed)', type: 'textarea', wide: true, internal: true },
     ]},
   ];
+
+  // Welcome letter sections also printed under Provided by Festival on the
+  // offer sheet (heading → label), so that text lives in one place. The
+  // Backline section is a dropdown of BACKLINE_OPTIONS.
+  const WELCOME_ON_OFFER = [
+    { heading: 'Catering / Hospitality', label: 'Catering / Hospitality' },
+    { heading: 'Hotel', label: 'Lodging' },
+    { heading: 'Transportation', label: 'Transportation' },
+    { heading: 'Backline', label: 'Backline' },
+  ];
+  const BACKLINE_OPTIONS = ['Backline provided by artist', 'Backline provided by venue'];
 
   const ADVANCE_SECTIONS = [
     // One row per contact (name / phone / email). festivalDefault fields are
@@ -224,7 +231,7 @@
 
   const flat = (sections) => sections.flatMap(s => s.fields);
   const api = {
-    OFFER_SECTIONS, ADVANCE_SECTIONS, PAYMENT_SECTIONS, STATUSES, DOC_KINDS, ROLES, RESTRICTED_STATUSES, ROLE_DOC_KINDS,
+    OFFER_SECTIONS, ADVANCE_SECTIONS, PAYMENT_SECTIONS, WELCOME_ON_OFFER, BACKLINE_OPTIONS, STATUSES, DOC_KINDS, ROLES, RESTRICTED_STATUSES, ROLE_DOC_KINDS,
     WELCOME_FILE_KINDS,
     OFFER_FIELDS: flat(OFFER_SECTIONS),
     ADVANCE_FIELDS: flat(ADVANCE_SECTIONS),
