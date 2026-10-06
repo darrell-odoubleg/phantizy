@@ -40,7 +40,7 @@ app.use(session({
 
 // Reachable without a session.
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
-for (const f of ['login.html', 'style.css', 'logo.png']) {
+for (const f of ['login.html', 'style.css', 'logo.png', 'icon-64.png', 'icon-180.png']) {
   app.get('/' + f, (req, res) => res.sendFile(path.join(PUBLIC_DIR, f)));
 }
 app.use('/api', auth.router);

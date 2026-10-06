@@ -12,7 +12,7 @@ const { OFFER_SECTIONS, ADVANCE_SECTIONS } = require('../public/fields');
 const INK = '#1b1b1f';
 const DIM = '#6b6b75';
 const RULE = '#d8d8de';
-const ACCENT = '#5b2a86';
+const ACCENT = '#58417b';
 const LOGO_PATH = path.join(__dirname, '..', 'public', 'logo.png');
 
 const COMPANY = () => ({

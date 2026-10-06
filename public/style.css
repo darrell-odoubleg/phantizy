@@ -1,7 +1,7 @@
 :root{
-  --accent:#5B2A86;
-  --accent-dark:#3E1C5C;
-  --accent-soft:#EFE8F6;
+  --accent:#58417B;
+  --accent-dark:#3B2B54;
+  --accent-soft:#EEEAF4;
   --gold:#C9A227;
   --bg:#F6F5F8;
   --panel:#FFFFFF;
@@ -21,7 +21,7 @@ a{color:var(--accent);}
 
 nav.top{background:var(--accent-dark);color:#fff;padding:12px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
 nav.top .brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-weight:800;letter-spacing:1.5px;font-size:15px;}
-nav.top .brand img{height:30px;}
+nav.top .brand img{height:38px;width:auto;display:block;}
 nav.top .brand small{font-weight:500;letter-spacing:0.5px;opacity:0.7;font-size:12px;}
 nav.top .links{display:flex;gap:18px;align-items:center;font-size:13px;flex-wrap:wrap;}
 nav.top .links a{color:#fff;opacity:0.85;text-decoration:none;font-weight:600;}
@@ -125,7 +125,7 @@ tbody tr.click:hover td{background:var(--accent-soft);}
 /* Login */
 .login-shell{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(160deg,var(--accent-dark),var(--accent));}
 .login-card{background:#fff;border-radius:10px;padding:30px 28px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
-.login-card .brand{font-weight:800;letter-spacing:2px;color:var(--accent);font-size:18px;text-align:center;margin-bottom:4px;}
+.login-card .brand{display:block;width:230px;max-width:80%;height:auto;margin:0 auto 10px;}
 .login-card p{text-align:center;color:var(--dim);margin:0 0 22px;}
 .err-msg{color:var(--danger);font-size:13px;min-height:18px;margin-bottom:8px;}
 
