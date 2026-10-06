@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_offer ON documents(offer_id);
 
 -- auto_key ties an item to an event that checks it off automatically:
--- status_sent, status_accepted, doc_contract, doc_fec, doc_rider, doc_w9, doc_coi,
+-- status_sent, status_accepted, doc_contract, doc_fec, doc_rider, doc_w9, doc_coi, welcome_sent,
 -- pay_deposit, pay_settlement, pay_balance (status_completed: older rows).
 -- Festivals offered in the Festival dropdown (managed in Settings).
 CREATE TABLE IF NOT EXISTS festivals (
@@ -71,6 +71,18 @@ CREATE TABLE IF NOT EXISTS festivals (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Emails sent from the site (welcome packages).
+CREATE TABLE IF NOT EXISTS email_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  offer_id INTEGER REFERENCES offers(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  to_addr TEXT NOT NULL,
+  cc_addr TEXT,
+  subject TEXT,
+  sent_by_name TEXT,
+  sent_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS checklist_template (
@@ -127,6 +139,9 @@ addMissingColumns('offers', OFFER_FIELDS);
 addMissingColumns('offers', PAYMENT_FIELDS);
 // Festival-wide defaults (JSON of festivalWide offer fields) used to fill new offers.
 addMissingColumns('festivals', [{ key: 'details' }]);
+// Welcome package letter for the festival (JSON: dos_name, dos_phone, intro,
+// sections [{heading, body}], closing, signoff).
+addMissingColumns('festivals', [{ key: 'welcome' }]);
 addMissingColumns('advances', ADVANCE_FIELDS);
 
 const DEFAULT_CHECKLIST = [
@@ -149,6 +164,7 @@ const DEFAULT_CHECKLIST = [
   ['Set times sent to artist', null],
   ['Advance call completed', null],
   ['Advance sheet sent to tour manager', null],
+  ['Welcome package sent to tour manager', 'welcome_sent'],
   ['Settlement completed', 'pay_settlement'],
   ['Balance paid', 'pay_balance'],
 ];

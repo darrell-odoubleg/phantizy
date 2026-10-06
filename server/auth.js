@@ -82,6 +82,8 @@ const ROLE_ALLOWED = {
     ...COMMON_ALLOWED,
     ['PUT', /^\/api\/offers\/\d+\/advance$/],
     ['GET', /^\/api\/offers\/\d+\/advance-sheet\.pdf$/],
+    ['GET', /^\/api\/offers\/\d+\/welcome(\.pdf)?$/],
+    ['POST', /^\/api\/offers\/\d+\/welcome\/send$/],
   ],
   accounting: [
     ...COMMON_ALLOWED,

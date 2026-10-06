@@ -9,7 +9,9 @@ const multer = require('multer');
 const db = require('../db/init');
 const { requireAdmin } = require('../server/auth');
 const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS } = require('../public/fields');
-const { offerSheetPdf, advanceSheetPdf } = require('../server/pdf');
+const { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, fillTemplate, welcomeVars } = require('../server/pdf');
+const mailer = require('../server/mailer');
+const { PassThrough } = require('stream');
 
 const router = express.Router();
 const UPLOAD_DIR = db.UPLOAD_DIR;
@@ -256,6 +258,103 @@ router.get('/offers/:id/offer-sheet.pdf', loadOffer, (req, res) => {
 router.get('/offers/:id/advance-sheet.pdf', loadOffer, (req, res) => {
   const advance = db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(req.offer.id) || {};
   sendPdf(res, pdfName(req.offer, 'Advance'), out => advanceSheetPdf(req.offer, advance, out));
+});
+
+// ---- welcome package (letter to the tour manager) ----
+
+function festivalWelcome(offer) {
+  const row = db.prepare('SELECT welcome FROM festivals WHERE name = ?').get(offer.festival_name);
+  try { return (row && JSON.parse(row.welcome)) || {}; } catch { return {}; }
+}
+function getAdvance(offerId) {
+  return db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(offerId) || {};
+}
+function pdfBuffer(build) {
+  return new Promise((resolve, reject) => {
+    const out = new PassThrough();
+    const chunks = [];
+    out.on('data', c => chunks.push(c));
+    out.on('end', () => resolve(Buffer.concat(chunks)));
+    out.on('error', reject);
+    build(out);
+  });
+}
+const EMAIL_RE = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]+$/;
+function emailList(v, label, required) {
+  const list = String(v || '').split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  if (required && !list.length) throw Object.assign(new Error(`${label}: enter an email address`), { status: 400 });
+  const bad = list.find(a => !EMAIL_RE.test(a));
+  if (bad) throw Object.assign(new Error(`${label}: "${bad}" isn't a valid email address`), { status: 400 });
+  if (list.length > 10) throw Object.assign(new Error(`${label}: 10 addresses at most`), { status: 400 });
+  return list;
+}
+
+router.get('/offers/:id/welcome.pdf', loadOffer, (req, res) => {
+  sendPdf(res, pdfName(req.offer, 'Welcome Package'), out => welcomeLetterPdf(req.offer, getAdvance(req.offer.id), festivalWelcome(req.offer), out));
+});
+
+// Draft of the email (editable in the browser) plus send history.
+router.get('/offers/:id/welcome', loadOffer, (req, res) => {
+  const adv = getAdvance(req.offer.id);
+  const welcome = festivalWelcome(req.offer);
+  const vars = welcomeVars(req.offer, adv, welcome);
+  const first = (adv.tour_manager_name || '').trim().split(/\s+/)[0] || 'there';
+  const message = [
+    `Hi ${first},`,
+    '',
+    `Welcome to ${vars.festival || 'the festival'}! We're looking forward to having ${vars.artist} with us${vars.date ? ' on ' + vars.date : ''}. Your welcome package is attached with everything you'll need for show day.`,
+    '',
+    welcome.dos_name ? `Your day of show contact is ${[welcome.dos_name, welcome.dos_phone].filter(Boolean).join(', ')}.` : null,
+    welcome.dos_name ? '' : null,
+    'Please reply with any questions.',
+    '',
+    'Thanks,',
+    req.user.name,
+    process.env.COMPANY_NAME || 'Phantizy Productions',
+  ].filter(l => l !== null).join('\n');
+  res.json({
+    configured: mailer.isConfigured(),
+    from: mailer.fromAddress(),
+    hasFestivalText: !!(welcome.intro || (welcome.sections || []).length),
+    to: adv.tour_manager_email || '',
+    cc: req.user.email,
+    subject: `Welcome to ${vars.festival || 'the festival'}: ${vars.artist}${vars.date ? ' (' + vars.date + ')' : ''}`,
+    message,
+    log: db.prepare(`SELECT to_addr, cc_addr, subject, sent_by_name, sent_at FROM email_log
+                     WHERE offer_id = ? AND kind = 'welcome' ORDER BY sent_at DESC LIMIT 10`).all(req.offer.id),
+  });
+});
+
+router.post('/offers/:id/welcome/send', loadOffer, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const to = emailList(b.to, 'To', true);
+    const cc = emailList(b.cc, 'CC', false);
+    const subject = String(b.subject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 250);
+    const text = String(b.message || '').slice(0, 20000);
+    if (!subject) throw Object.assign(new Error('Subject is required'), { status: 400 });
+    const adv = getAdvance(req.offer.id);
+    const attachments = [{
+      filename: pdfName(req.offer, 'Welcome Package').replace(/[^\w.\- ]+/g, ''),
+      content: await pdfBuffer(out => welcomeLetterPdf(req.offer, adv, festivalWelcome(req.offer), out)),
+      contentType: 'application/pdf',
+    }];
+    if (b.attach_advance) {
+      attachments.push({
+        filename: pdfName(req.offer, 'Advance').replace(/[^\w.\- ]+/g, ''),
+        content: await pdfBuffer(out => advanceSheetPdf(req.offer, adv, out)),
+        contentType: 'application/pdf',
+      });
+    }
+    await mailer.sendMail({ to, cc, replyTo: req.user.email, subject, text, attachments });
+    db.prepare(`INSERT INTO email_log (offer_id, kind, to_addr, cc_addr, subject, sent_by_name)
+                VALUES (?, 'welcome', ?, ?, ?, ?)`).run(req.offer.id, to.join(', '), cc.join(', ') || null, subject, req.user.name);
+    autoCheck(req.offer.id, 'welcome_sent', req.user.name);
+    res.json({ ok: true });
+  } catch (err) {
+    if (!err.status) { console.error('welcome send failed:', err.message); err = Object.assign(new Error('Email could not be sent: ' + err.message), { status: 502 }); }
+    next(err);
+  }
 });
 
 // ---- documents (contracts, riders, stage plots) ----

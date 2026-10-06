@@ -46,8 +46,11 @@
     <div class="savebar">
       <button class="btn" id="saveAdvance">Save advance</button>
       <a class="btn outline" id="advancePdf" target="_blank">Advance sheet PDF</a>
+      <a class="btn outline" id="welcomePdf" target="_blank">Welcome letter PDF</a>
+      <button class="btn outline" id="welcomeBtn">Email welcome package</button>
       <span class="msg" id="advanceMsg"></span>
     </div>
+    <div class="sent-log" id="welcomeLog"></div>
   </section>
 
   <!-- Documents -->
@@ -90,6 +93,30 @@
     </div>
   </section>
 </div>
+
+<dialog class="modal" id="welcomeDlg">
+  <form method="dialog" id="welcomeSendForm" novalidate>
+    <div class="mbody">
+      <h2>Email welcome package</h2>
+      <p class="subtitle" style="margin-bottom:14px">Sends the welcome letter as a PDF attachment<span id="wFrom"></span>.</p>
+      <div class="note-box warn" id="wNotConfigured" hidden>Email isn't set up on the server yet, so this can't be sent. Download the <a id="wPdfLink" target="_blank">welcome letter PDF</a> and attach it to your own email for now.</div>
+      <div class="note-box" id="wNoText" hidden>This festival has no welcome package text yet, so the letter will only have the show details. An admin can add it in Settings → Festivals → Details &amp; welcome.</div>
+      <label for="wTo">To (tour manager)</label>
+      <input type="text" id="wTo" placeholder="tm@example.com" autocomplete="off">
+      <label for="wCc">CC</label>
+      <input type="text" id="wCc" autocomplete="off">
+      <label for="wSubject">Subject</label>
+      <input type="text" id="wSubject">
+      <label for="wMessage">Message</label>
+      <textarea id="wMessage" rows="10"></textarea>
+      <label class="check-inline"><input type="checkbox" id="wAttachAdvance"> Also attach the advance sheet PDF</label>
+    </div>
+    <div class="mfoot">
+      <button type="button" class="btn outline" id="wCancel">Cancel</button>
+      <button type="button" class="btn" id="wSend">Send</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="/fields.js"></script>
 <script src="/app.js"></script>
@@ -140,6 +167,8 @@ async function load() {
   renderDocs();
   if (hasTab('advance')) {
     $('#advancePdf').href = `/api/offers/${id}/advance-sheet.pdf`;
+    $('#welcomePdf').href = `/api/offers/${id}/welcome.pdf`;
+    refreshWelcomeLog();
     if (!dirty.advance) renderSections($('#advanceForm'), PF.ADVANCE_SECTIONS, data.advance);
   }
   if (hasTab('payments')) renderPayments(o);
@@ -217,6 +246,50 @@ $('#saveAdvance').onclick = async () => {
     toast('Advance saved');
   } catch (e) { toast(e.message, true); }
   finally { $('#saveAdvance').disabled = false; }
+};
+
+// ---- welcome package ----
+function renderWelcomeLog(log) {
+  $('#welcomeLog').innerHTML = log && log.length
+    ? 'Welcome package sent: ' + log.slice(0, 3).map(l => `${esc(l.to_addr)} · ${fmtStamp(l.sent_at)} by ${esc(l.sent_by_name || '')}`).join('; ')
+    : '';
+}
+async function refreshWelcomeLog() {
+  try { renderWelcomeLog((await api(`/offers/${id}/welcome`)).log); } catch {}
+}
+$('#welcomePdf').addEventListener('click', (e) => {
+  if (dirty.advance) { e.preventDefault(); toast('Save the advance first so the letter includes your changes', true); }
+});
+$('#welcomeBtn').onclick = async () => {
+  if (dirty.advance) { toast('Save the advance first so the letter includes your changes', true); return; }
+  try {
+    const w = await api(`/offers/${id}/welcome`);
+    $('#wTo').value = w.to; $('#wCc').value = w.cc || ''; $('#wSubject').value = w.subject; $('#wMessage').value = w.message;
+    $('#wAttachAdvance').checked = false;
+    $('#wFrom').textContent = w.from ? ` from ${w.from}` : '';
+    $('#wNotConfigured').hidden = w.configured;
+    $('#wNoText').hidden = w.hasFestivalText;
+    $('#wPdfLink').href = `/api/offers/${id}/welcome.pdf`;
+    $('#wSend').disabled = !w.configured;
+    $('#welcomeDlg').showModal();
+    (w.to ? $('#wMessage') : $('#wTo')).focus();
+  } catch (e) { toast(e.message, true); }
+};
+$('#wCancel').onclick = () => $('#welcomeDlg').close();
+$('#wSend').onclick = async () => {
+  if (!$('#wTo').value.trim()) { toast("Enter the tour manager's email", true); $('#wTo').focus(); return; }
+  $('#wSend').disabled = true; $('#wSend').textContent = 'Sending…';
+  try {
+    await api(`/offers/${id}/welcome/send`, { method: 'POST', body: {
+      to: $('#wTo').value, cc: $('#wCc').value, subject: $('#wSubject').value,
+      message: $('#wMessage').value, attach_advance: $('#wAttachAdvance').checked,
+    } });
+    $('#welcomeDlg').close();
+    toast('Welcome package sent to ' + $('#wTo').value);
+    await refreshWelcomeLog();
+    if (!ROLE) { data = await api('/offers/' + id); renderChecklist(); }
+  } catch (e) { toast(e.message, true); }
+  finally { $('#wSend').disabled = false; $('#wSend').textContent = 'Send'; }
 };
 
 // ---- payments ----

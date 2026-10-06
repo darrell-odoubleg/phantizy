@@ -13,9 +13,42 @@
   <h1 id="title">Festival details</h1>
   <p class="subtitle">These fill in automatically when this festival is picked on an offer. Offers already created keep what they have. <a href="/admin.html">Back to Settings</a></p>
   <form id="form" novalidate></form>
-  <div class="savebar">
+  <div class="savebar" style="position:static">
     <button class="btn" id="save">Save details</button>
     <span class="msg" id="msg"></span>
+  </div>
+
+  <h1 style="margin-top:34px">Welcome package</h1>
+  <p class="subtitle">The letter emailed to each act's tour manager from the offer's Advance sheet tab. It's combined with that show's date, stage, set time, hotel and advance details. You can use {artist}, {festival}, {date}, {stage}, {tm}, {dos_name} and {dos_phone} in the text. Sections with no text are left off the letter.</p>
+  <form id="welcomeForm" novalidate>
+    <div class="card">
+      <h2>Day of show contact</h2>
+      <div class="grid">
+        <div><label for="w_dos_name">Name</label><input type="text" id="w_dos_name"></div>
+        <div><label for="w_dos_phone">Phone</label><input type="tel" id="w_dos_phone"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Opening</h2>
+      <label for="w_intro">Intro paragraph</label>
+      <textarea id="w_intro" rows="3"></textarea>
+    </div>
+    <div class="card">
+      <h2>Sections</h2>
+      <div id="wSections"></div>
+      <button type="button" class="btn outline sm" id="wAdd">+ Add section</button>
+    </div>
+    <div class="card">
+      <h2>Closing</h2>
+      <label for="w_closing">Closing paragraph</label>
+      <textarea id="w_closing" rows="2"></textarea>
+      <label for="w_signoff">Signed</label>
+      <input type="text" id="w_signoff" placeholder="Phantizy Productions">
+    </div>
+  </form>
+  <div class="savebar">
+    <button class="btn" id="saveWelcome">Save welcome package</button>
+    <span class="msg" id="wmsg"></span>
   </div>
 </div>
 <script src="/fields.js"></script>
@@ -30,7 +63,64 @@ const SECTIONS = PF.OFFER_SECTIONS.filter(s => s.festivalWide)
 let dirty = false;
 
 $('#form').addEventListener('input', () => { dirty = true; $('#msg').innerHTML = 'Unsaved changes<span class="dirty-dot"></span>'; });
-window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => { if (dirty || wDirty) { e.preventDefault(); e.returnValue = ''; } });
+
+// ---- welcome package ----
+let wSections = [];
+let wDirty = false;
+function wMark() { wDirty = true; $('#wmsg').innerHTML = 'Unsaved changes<span class="dirty-dot"></span>'; }
+function renderW() {
+  $('#wSections').innerHTML = wSections.map((s, i) => `
+    <div class="w-sec" data-i="${i}">
+      <div class="w-sec-head">
+        <input type="text" data-f="heading" value="${esc(s.heading)}" placeholder="Heading (e.g. Catering)">
+        <button type="button" class="icon-btn" data-mv="-1" title="Move up">▲</button>
+        <button type="button" class="icon-btn" data-mv="1" title="Move down">▼</button>
+        <button type="button" class="icon-btn" data-del title="Remove section">&times;</button>
+      </div>
+      <textarea data-f="body" rows="${Math.min(10, Math.max(3, (s.body || '').split('\n').length + 1))}" placeholder="Text for this section (leave blank to keep it off the letter)">${esc(s.body)}</textarea>
+    </div>`).join('') || '<div class="empty">No sections yet.</div>';
+}
+$('#wSections').addEventListener('input', (e) => {
+  const box = e.target.closest('[data-i]'); if (!box || !e.target.dataset.f) return;
+  wSections[box.dataset.i][e.target.dataset.f] = e.target.value; wMark();
+});
+$('#wSections').addEventListener('click', (e) => {
+  const box = e.target.closest('[data-i]'); if (!box) return;
+  const i = Number(box.dataset.i);
+  if (e.target.closest('[data-del]')) {
+    if (wSections[i].body && !confirm(`Remove the "${wSections[i].heading || 'untitled'}" section?`)) return;
+    wSections.splice(i, 1);
+  } else if (e.target.closest('[data-mv]')) {
+    const j = i + Number(e.target.closest('[data-mv]').dataset.mv);
+    if (j < 0 || j >= wSections.length) return;
+    [wSections[i], wSections[j]] = [wSections[j], wSections[i]];
+  } else return;
+  wMark(); renderW();
+});
+$('#wAdd').onclick = () => { wSections.push({ heading: '', body: '' }); wMark(); renderW(); $('#wSections .w-sec:last-child input').focus(); };
+$('#welcomeForm').addEventListener('input', (e) => { if (e.target.id && e.target.id.startsWith('w_')) wMark(); });
+$('#saveWelcome').onclick = async () => {
+  $('#saveWelcome').disabled = true;
+  try {
+    await api(`/festival-options/${id}/welcome`, { method: 'PUT', body: {
+      dos_name: $('#w_dos_name').value, dos_phone: $('#w_dos_phone').value,
+      intro: $('#w_intro').value, closing: $('#w_closing').value, signoff: $('#w_signoff').value,
+      sections: wSections,
+    } });
+    wDirty = false; $('#wmsg').textContent = ''; toast('Welcome package saved');
+  } catch (e) { toast(e.message, true); }
+  finally { $('#saveWelcome').disabled = false; }
+};
+function loadWelcome(w) {
+  $('#w_dos_name').value = w.dos_name || '';
+  $('#w_dos_phone').value = w.dos_phone || '';
+  $('#w_intro').value = w.intro || '';
+  $('#w_closing').value = w.closing || '';
+  $('#w_signoff').value = w.signoff || '';
+  wSections = (w.sections || []).map(s => ({ heading: s.heading || '', body: s.body || '' }));
+  renderW();
+}
 
 $('#save').onclick = async () => {
   $('#save').disabled = true;
@@ -48,9 +138,11 @@ initNav('admin').then(async () => {
     $('#title').textContent = f.name;
     document.title = f.name + ' · Phantizy Productions';
     renderSections($('#form'), SECTIONS, f.details);
+    loadWelcome(f.welcome || {});
   } catch (e) {
     $('#title').textContent = 'Festival not found';
     $('#save').hidden = true;
+    $('#saveWelcome').hidden = true;
   }
 });
 </script>

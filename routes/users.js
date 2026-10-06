@@ -72,9 +72,26 @@ router.get('/festival-options', (req, res) => {
 });
 
 router.get('/festival-options/:id', (req, res) => {
-  const f = db.prepare('SELECT id, name, active, details FROM festivals WHERE id = ?').get(Number(req.params.id));
+  const f = db.prepare('SELECT id, name, active, details, welcome FROM festivals WHERE id = ?').get(Number(req.params.id));
   if (!f) return res.status(404).json({ error: 'Festival not found' });
-  res.json({ ...f, details: parseDetails(f.details) });
+  res.json({ ...f, details: parseDetails(f.details), welcome: parseDetails(f.welcome) });
+});
+
+// Welcome package letter text for this festival.
+router.put('/festival-options/:id/welcome', requireAdmin, (req, res) => {
+  const f = db.prepare('SELECT id FROM festivals WHERE id = ?').get(Number(req.params.id));
+  if (!f) return res.status(404).json({ error: 'Festival not found' });
+  const b = req.body || {};
+  const str = (v, max = 5000) => String(v ?? '').trim().slice(0, max);
+  const welcome = {
+    dos_name: str(b.dos_name, 200), dos_phone: str(b.dos_phone, 100),
+    intro: str(b.intro), closing: str(b.closing), signoff: str(b.signoff, 300),
+    sections: (Array.isArray(b.sections) ? b.sections : []).slice(0, 60)
+      .map(s => ({ heading: str(s.heading, 200), body: str(s.body, 10000) }))
+      .filter(s => s.heading || s.body),
+  };
+  db.prepare('UPDATE festivals SET welcome = ? WHERE id = ?').run(JSON.stringify(welcome), f.id);
+  res.json({ ok: true });
 });
 
 router.put('/festival-options/:id/details', requireAdmin, (req, res) => {

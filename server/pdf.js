@@ -183,4 +183,101 @@ function advanceSheetPdf(offer, advance, out) {
   doc.end();
 }
 
-module.exports = { offerSheetPdf, advanceSheetPdf };
+// Fills {artist}, {festival}, {date}, {stage}, {tm}, {dos_name}, {dos_phone}
+// in festival welcome text.
+function fillTemplate(text, vars) {
+  return String(text || '').replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined && vars[k] !== null ? vars[k] : ''));
+}
+
+function welcomeVars(offer, advance, welcome) {
+  return {
+    artist: offer.artist_name || '',
+    festival: offer.festival_name || '',
+    date: offer.event_date ? fmtDate(offer.event_date) : '',
+    stage: offer.stage || '',
+    tm: advance.tour_manager_name || '',
+    dos_name: welcome.dos_name || '',
+    dos_phone: welcome.dos_phone || '',
+  };
+}
+
+// Welcome package letter to the tour manager: festival-wide text (Settings →
+// Festivals → Welcome package) plus this show's details from the offer and
+// advance sheet. No money or deal terms.
+function welcomeLetterPdf(offer, advance, welcome, out) {
+  const doc = newDoc(out);
+  const left = doc.page.margins.left;
+  const width = doc.page.width - left * 2;
+  const vars = welcomeVars(offer, advance, welcome);
+  header(doc, 'WELCOME PACKAGE', offer);
+
+  const para = (text, opts = {}) => {
+    if (blank(text)) return;
+    doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(opts.size || 10.5).fillColor(opts.color || INK)
+      .text(String(text), left, doc.y, { width, lineGap: 2 });
+    doc.moveDown(opts.after ?? 0.7);
+  };
+
+  para(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), { color: DIM, size: 9.5 });
+  para(`Dear ${advance.tour_manager_name || 'Tour Manager'},`);
+  para(fillTemplate(welcome.intro, vars));
+
+  // Day of show contact, highlighted.
+  if (welcome.dos_name || welcome.dos_phone) {
+    ensure(doc, 60);
+    const y = doc.y;
+    doc.rect(left, y, width, 46).fill('#EEEAF4');
+    doc.rect(left, y, 4, 46).fill(ACCENT);
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(ACCENT).text('DAY OF SHOW CONTACT', left + 16, y + 9, { characterSpacing: 1 });
+    doc.font('Helvetica-Bold').fontSize(13).fillColor(INK)
+      .text([welcome.dos_name, welcome.dos_phone].filter(Boolean).join('   ·   '), left + 16, y + 22, { width: width - 32 });
+    doc.y = y + 46 + 16;
+  }
+
+  const show = { ...advance, ...offer, festival_gates: offer.festival_gates || advance.doors_time };
+  section(doc, 'Your Show', [
+    { key: 'event_date', label: 'Show date', type: 'date' },
+    { key: 'stage', label: 'Stage' },
+    { key: 'show_time', label: 'Set time', type: 'time' },
+    { key: 'set_length', label: 'Set length' },
+    { key: 'festival_gates', label: 'Gates open', type: 'time' },
+    { key: 'changeover', label: 'Changeover' },
+    { key: 'venue_address', label: 'Site address', wide: true },
+  ], show);
+  section(doc, 'Your Advance', [
+    { key: 'artist_checkin_time', label: 'Artist check-in', type: 'time' },
+    { key: 'load_in_time', label: 'Load in / stage arrival', type: 'time' },
+    { key: 'soundcheck_time', label: 'Line check', type: 'time' },
+    { key: 'curfew', label: 'Stage curfew', type: 'time' },
+    { key: 'credential_pickup', label: 'Credential pickup' },
+    { key: 'artist_entrance', label: 'Artist entrance' },
+    { key: 'credentials', label: 'Credentials / wristbands' },
+    { key: 'guest_list', label: 'Guest list / comps' },
+    { key: 'hotel_name', label: 'Hotel' },
+    { key: 'hotel_confirmation', label: 'Hotel confirmation #' },
+    { key: 'hotel_rooms', label: 'Rooms' },
+    { key: 'hotel_checkin', label: 'Check-in / out' },
+    { key: 'stage_manager_name', label: 'Stage manager' },
+    { key: 'stage_manager_phone', label: 'Stage manager phone' },
+    { key: 'artist_relations_name', label: 'Artist relations' },
+    { key: 'artist_relations_phone', label: 'Artist relations phone' },
+  ], show);
+
+  for (const sec of welcome.sections || []) {
+    const body = fillTemplate(sec.body, vars).trim();
+    if (!body) continue; // headings with no text yet (e.g. Backline) are left out
+    ensure(doc, 50);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(ACCENT).text(String(sec.heading || '').toUpperCase(), left, doc.y, { characterSpacing: 1 });
+    doc.moveDown(0.25);
+    para(body, { after: 0.9 });
+  }
+
+  doc.moveDown(0.3);
+  para(fillTemplate(welcome.closing, vars));
+  para(welcome.signoff ? fillTemplate(welcome.signoff, vars) : COMPANY().name, { bold: true });
+
+  footer(doc, `Welcome package · ${offer.artist_name || ''}`);
+  doc.end();
+}
+
+module.exports = { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, fillTemplate, welcomeVars };

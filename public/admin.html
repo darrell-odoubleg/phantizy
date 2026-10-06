@@ -50,7 +50,7 @@
 
     <div class="card">
       <h2>Festivals</h2>
-      <p style="margin:-6px 0 14px;color:var(--dim);font-size:13px">These are the choices in the Festival dropdown on every offer. A festival's <strong>Details</strong> (dates, site, contacts, terms) fill in automatically when it's picked on an offer. Renaming a festival updates its existing offers. Hiding one removes it from the dropdown but keeps its offers.</p>
+      <p style="margin:-6px 0 14px;color:var(--dim);font-size:13px">These are the choices in the Festival dropdown on every offer. A festival's <strong>Details</strong> (dates, site, contacts, terms) fill in automatically when it's picked on an offer, and its <strong>Welcome package</strong> is the letter emailed to each act's tour manager. Renaming a festival updates its existing offers. Hiding one removes it from the dropdown but keeps its offers.</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Festival</th><th>Offers</th><th>In dropdown</th><th></th></tr></thead>
         <tbody id="festRows"></tbody>
@@ -141,7 +141,7 @@ async function loadFestivals() {
       <td>${f.offers}</td>
       <td>${f.active ? 'Yes' : '<span style="color:var(--dim)">Hidden</span>'}</td>
       <td class="btn-row" style="justify-content:flex-end">
-        <a class="btn outline sm" href="/festival.html?id=${f.id}">Details${Object.keys(f.details || {}).length ? '' : ' (none)'}</a>
+        <a class="btn outline sm" href="/festival.html?id=${f.id}">Details &amp; welcome</a>
         <button class="btn outline sm" data-act="rename">Rename</button>
         <button class="btn outline sm" data-act="toggle">${f.active ? 'Hide' : 'Show'}</button>
       </td>

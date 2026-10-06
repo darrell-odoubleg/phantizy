@@ -126,6 +126,24 @@ tbody tr.click:hover td{background:var(--accent-soft);}
 .add-row{display:flex;gap:8px;margin-top:12px;}
 .add-row input{margin:0;}
 
+/* Welcome package editor */
+.w-sec{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:#fcfbfd;}
+.w-sec-head{display:flex;gap:6px;align-items:center;margin-bottom:8px;}
+.w-sec-head input{margin:0;font-weight:600;}
+.w-sec textarea{margin:0;}
+
+/* Email dialog */
+dialog.modal{border:none;border-radius:10px;padding:0;width:min(640px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.3);}
+dialog.modal::backdrop{background:rgba(20,14,30,.5);}
+dialog.modal .mbody{padding:22px 22px 8px;max-height:calc(100vh - 160px);overflow:auto;}
+dialog.modal .mfoot{padding:14px 22px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
+dialog.modal h2{font-size:17px;margin:0 0 4px;}
+.note-box{background:var(--accent-soft);border-radius:6px;padding:10px 12px;font-size:13px;margin-bottom:14px;}
+.note-box.warn{background:#fdf5e6;color:#6b4e00;}
+.check-inline{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink);font-weight:400;}
+.check-inline input{width:auto;margin:0;}
+.sent-log{font-size:12.5px;color:var(--dim);margin-top:6px;}
+
 /* Login */
 .login-shell{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(160deg,var(--accent-dark),var(--accent));}
 .login-card{background:#fff;border-radius:10px;padding:30px 28px;width:100%;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
