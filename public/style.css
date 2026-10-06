@@ -44,6 +44,8 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:0 16px;}
 .grid .wide{grid-column:1/-1;}
 .grid .span2{grid-column:span 2;}
+.grid.cols-3{grid-template-columns:2fr 1.2fr 2fr;}
+@media (max-width:700px){ .grid.cols-3{grid-template-columns:1fr;} }
 @media (max-width:480px){ .grid .span2{grid-column:1/-1;} }
 .req::after{content:' *';color:var(--danger);}
 

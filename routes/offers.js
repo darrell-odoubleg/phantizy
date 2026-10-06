@@ -7,7 +7,7 @@ const express = require('express');
 const db = require('../db/init');
 const { makeUpload, sendStoredFile } = require('../server/upload');
 const { requireAdmin } = require('../server/auth');
-const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS, WELCOME_FILE_KINDS } = require('../public/fields');
+const { OFFER_FIELDS, ADVANCE_FIELDS, ADVANCE_SECTIONS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS, WELCOME_FILE_KINDS } = require('../public/fields');
 const { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, runOfShowPdf, fillTemplate, welcomeVars } = require('../server/pdf');
 const mailer = require('../server/mailer');
 const { runOfShowRows } = require('../server/ros');
@@ -166,12 +166,12 @@ router.get('/offers/:id', loadOffer, (req, res) => {
       offer: only(req.offer, ROLE_OFFER_KEYS[role]),
       documents: docs.filter(d => ROLE_DOC_KINDS[role].includes(d.kind)),
     };
-    if (role === 'production') out.advance = db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(id) || {};
+    if (role === 'production') out.advance = getAdvance(req.offer);
     return res.json(out);
   }
   res.json({
     offer: req.offer,
-    advance: db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(id) || {},
+    advance: getAdvance(req.offer),
     documents: docs,
     checklist: db.prepare('SELECT * FROM checklist_items WHERE offer_id = ? ORDER BY position, id').all(id),
   });
@@ -240,7 +240,7 @@ router.get('/offers/:id/offer-sheet.pdf', loadOffer, (req, res) => {
 });
 
 router.get('/offers/:id/advance-sheet.pdf', loadOffer, (req, res) => {
-  const advance = db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(req.offer.id) || {};
+  const advance = getAdvance(req.offer);
   sendPdf(res, pdfName(req.offer, 'Advance'), out => advanceSheetPdf(req.offer, advance, out));
 });
 
@@ -299,7 +299,7 @@ const publicAttachment = ({ path: _p, build: _b, ...a }) => ({ ...a, generated: 
 // attachment, then the advance sheet if asked for. Returns the PDF plus any
 // files that couldn't be merged (sent as separate attachments).
 async function buildWelcomePackage(offer, files, includeAdvance) {
-  const adv = getAdvance(offer.id);
+  const adv = getAdvance(offer);
   const welcome = festivalWelcome(offer);
   for (const f of files) {
     if (f.build) f.bytes = await pdfBuffer(f.build); // generated (run of show table)
@@ -327,8 +327,18 @@ async function buildWelcomePackage(offer, files, includeAdvance) {
   return { pdf: await pdfMerge.merge(letter, parts), separate };
 }
 
-function getAdvance(offerId) {
-  return db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(offerId) || {};
+// The offer's advance sheet, with blank festivalDefault fields (day-of
+// contacts) filled from the festival's details.
+const ADVANCE_DEFAULT_KEYS = ADVANCE_SECTIONS.flatMap(s => s.fields).filter(f => f.festivalDefault).map(f => f.key);
+function getAdvance(offer) {
+  const adv = db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(offer.id) || {};
+  const fest = db.prepare('SELECT details FROM festivals WHERE name = ?').get(offer.festival_name || '');
+  let details = {};
+  try { details = JSON.parse(fest && fest.details) || {}; } catch {}
+  for (const k of ADVANCE_DEFAULT_KEYS) {
+    if ((adv[k] === null || adv[k] === undefined || String(adv[k]).trim() === '') && details[k]) adv[k] = details[k];
+  }
+  return adv;
 }
 function pdfBuffer(build) {
   return new Promise((resolve, reject) => {
@@ -365,7 +375,7 @@ router.get('/offers/:id/welcome.pdf', loadOffer, async (req, res, next) => {
 
 // Draft of the email (editable in the browser) plus send history.
 router.get('/offers/:id/welcome', loadOffer, (req, res) => {
-  const adv = getAdvance(req.offer.id);
+  const adv = getAdvance(req.offer);
   const welcome = festivalWelcome(req.offer);
   const vars = welcomeVars(req.offer, adv, welcome);
   const first = (adv.tour_manager_name || '').trim().split(/\s+/)[0] || 'there';

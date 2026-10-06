@@ -79,19 +79,37 @@
   ];
 
   const ADVANCE_SECTIONS = [
-    { title: 'Contacts', fields: [
-      { key: 'promoter_rep_name', label: 'Promoter rep (day of)' },
-      { key: 'promoter_rep_phone', label: 'Promoter rep phone', type: 'tel' },
+    // One row per contact (name / phone / email). festivalDefault fields are
+    // set once per festival (Settings → Festivals → Details) and fill any
+    // blank ones on every advance sheet.
+    { title: 'Contacts', columns: 3, fields: [
+      { key: 'promoter_rep_name', label: 'Day of Show Contact', festivalDefault: true },
+      { key: 'promoter_rep_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'promoter_rep_email', label: 'Email', type: 'email', festivalDefault: true },
       { key: 'tour_manager_name', label: 'Tour manager' },
-      { key: 'tour_manager_phone', label: 'TM phone', type: 'tel' },
-      { key: 'tour_manager_email', label: 'TM email', type: 'email' },
-      { key: 'production_contact_name', label: 'Festival production manager' },
-      { key: 'production_contact_phone', label: 'Production phone', type: 'tel' },
-      { key: 'production_contact_email', label: 'Production email', type: 'email' },
-      { key: 'stage_manager_name', label: 'Stage manager' },
-      { key: 'stage_manager_phone', label: 'Stage manager phone', type: 'tel' },
-      { key: 'artist_relations_name', label: 'Artist relations' },
-      { key: 'artist_relations_phone', label: 'Artist relations phone', type: 'tel' },
+      { key: 'tour_manager_phone', label: 'Phone', type: 'tel' },
+      { key: 'tour_manager_email', label: 'Email', type: 'email' },
+      { key: 'production_contact_name', label: 'Festival production manager', festivalDefault: true },
+      { key: 'production_contact_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'production_contact_email', label: 'Email', type: 'email', festivalDefault: true },
+      { key: 'stage_manager_name', label: 'Stage manager', festivalDefault: true },
+      { key: 'stage_manager_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'stage_manager_email', label: 'Email', type: 'email', festivalDefault: true },
+      { key: 'artist_relations_name', label: 'Catering / Hospitality', festivalDefault: true },
+      { key: 'artist_relations_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'artist_relations_email', label: 'Email', type: 'email', festivalDefault: true },
+      { key: 'merch_rep_name', label: 'Merchandise', festivalDefault: true },
+      { key: 'merch_rep_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'merch_rep_email', label: 'Email', type: 'email', festivalDefault: true },
+      { key: 'lighting_contact_name', label: 'Lighting', festivalDefault: true },
+      { key: 'lighting_contact_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'lighting_contact_email', label: 'Email', type: 'email', festivalDefault: true },
+      { key: 'sound_contact_name', label: 'Sound', festivalDefault: true },
+      { key: 'sound_contact_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'sound_contact_email', label: 'Email', type: 'email', festivalDefault: true },
+      { key: 'security_contact_name', label: 'Security', festivalDefault: true },
+      { key: 'security_contact_phone', label: 'Phone', type: 'tel', festivalDefault: true },
+      { key: 'security_contact_email', label: 'Email', type: 'email', festivalDefault: true },
     ]},
     { title: 'Schedule', fields: [
       { key: 'doors_time', label: 'Gates open', type: 'time' },
@@ -134,7 +152,6 @@
     { title: 'Merch, Guests & Settlement', fields: [
       { key: 'merch_seller', label: 'Merch seller', type: 'select', options: ['Artist sells', 'Festival merch tent', 'Third-party vendor'] },
       { key: 'merch_split', label: 'Merch split (soft / hard)' },
-      { key: 'merch_contact', label: 'Merch contact' },
       { key: 'guest_list', label: 'Guest list / comps' },
       { key: 'settlement_contact', label: 'Settlement contact' },
       { key: 'payment_method', label: 'Payment method', type: 'select', options: ['Check', 'Wire', 'ACH', 'Cash', 'Company check'] },

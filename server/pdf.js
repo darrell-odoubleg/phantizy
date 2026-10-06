@@ -83,7 +83,8 @@ function ensure(doc, h) {
 }
 
 // One section: title bar + 2-column grid (wide fields span both columns).
-function section(doc, title, fields, data) {
+function section(doc, title, fields, data, columns) {
+  if (columns) return rowSection(doc, title, fields, data, columns);
   const rows = fields.filter(f => !f.internal && !blank(data[f.key]));
   if (!rows.length) return;
   const left = doc.page.margins.left;
@@ -119,6 +120,37 @@ function section(doc, title, fields, data) {
     if (wide || col === 1) flush(); else col = 1;
   }
   if (col === 1) flush();
+  doc.y = y + 8;
+}
+
+// A section laid out as rows of `columns` fields (e.g. contact name / phone /
+// email); the first field's label names the row. Blank rows are left out.
+function rowSection(doc, title, fields, data, columns) {
+  const rows = [];
+  for (let i = 0; i < fields.length; i += columns) rows.push(fields.slice(i, i + columns));
+  const filled = rows.filter(r => r.some(f => !blank(data[f.key])));
+  if (!filled.length) return;
+  const left = doc.page.margins.left;
+  const width = doc.page.width - left * 2;
+  const widths = [0.38, 0.24, 0.38].map(w => w * width);
+  ensure(doc, 60);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(ACCENT).text(title.toUpperCase(), left, doc.y, { characterSpacing: 1 });
+  let y = doc.y + 3;
+  doc.moveTo(left, y).lineTo(left + width, y).lineWidth(0.6).strokeColor(RULE).stroke();
+  y += 7;
+  for (const r of filled) {
+    const h = 11 + Math.max(...r.map((f, i) => doc.font(i === 0 ? 'Helvetica-Bold' : 'Helvetica').fontSize(10)
+      .heightOfString(fmtValue(f, data[f.key]) || ' ', { width: widths[i] - 10 }))) + 8;
+    if (y + h > doc.page.height - doc.page.margins.bottom) { doc.addPage(); y = doc.page.margins.top; }
+    let x = left;
+    r.forEach((f, i) => {
+      if (i > 0 && blank(data[f.key])) { x += widths[i]; return; }
+      doc.font('Helvetica').fontSize(7.5).fillColor(DIM).text(f.label.toUpperCase(), x, y, { width: widths[i] - 10, characterSpacing: 0.5 });
+      doc.font(i === 0 ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor(INK).text(fmtValue(f, data[f.key]), x, y + 11, { width: widths[i] - 10 });
+      x += widths[i];
+    });
+    y += h;
+  }
   doc.y = y + 8;
 }
 
@@ -180,7 +212,7 @@ function advanceSheetPdf(offer, advance, out) {
     { key: 'artist_parking', label: 'Artist parking' },
   ];
   section(doc, 'Performance', ref, offer);
-  for (const s of ADVANCE_SECTIONS) section(doc, s.title, s.fields, advance);
+  for (const s of ADVANCE_SECTIONS) section(doc, s.title, s.fields, advance, s.columns);
   footer(doc, `Advance · Offer #${offer.id}`);
   doc.end();
 }

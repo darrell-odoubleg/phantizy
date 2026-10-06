@@ -7,7 +7,7 @@ const db = require('../db/init');
 const { requireAdmin, requireStaff, hashPassword } = require('../server/auth');
 const fs = require('fs');
 const path = require('path');
-const { OFFER_SECTIONS, ROLES, WELCOME_FILE_KINDS } = require('../public/fields');
+const { OFFER_SECTIONS, ADVANCE_SECTIONS, ROLES, WELCOME_FILE_KINDS } = require('../public/fields');
 const { makeUpload, sendStoredFile, UPLOAD_DIR } = require('../server/upload');
 const { runOfShowPdf } = require('../server/pdf');
 const { runOfShowRows } = require('../server/ros');
@@ -15,8 +15,10 @@ const festivalUpload = makeUpload(req => path.join('festivals', String(Number(re
 const cleanRole = (r) => (ROLES[r] ? r : 'staff');
 
 // Offer fields a festival can supply defaults for (its festivalWide sections).
+// Plus advance fields flagged festivalDefault (day-of contacts).
 const FESTIVAL_DETAIL_FIELDS = OFFER_SECTIONS.filter(s => s.festivalWide).flatMap(s => s.fields)
-  .filter(f => f.key !== 'festival_name' && !f.internal);
+  .filter(f => f.key !== 'festival_name' && !f.internal)
+  .concat(ADVANCE_SECTIONS.flatMap(s => s.fields).filter(f => f.festivalDefault));
 const parseDetails = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
 const parseList = (s) => { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; } };
 

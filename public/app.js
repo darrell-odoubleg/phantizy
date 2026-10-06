@@ -130,7 +130,7 @@ function applyFestivalDetails(form, name) {
 // Renders sections from fields.js as cards of inputs named by field key.
 function renderSections(container, sections, data = {}) {
   container.innerHTML = sections.map(s => `
-    <div class="card"><h2>${esc(s.title)}</h2><div class="grid">
+    <div class="card"><h2>${esc(s.title)}</h2><div class="grid${s.columns ? ' cols-' + s.columns : ''}">
       ${s.fields.map(f => fieldHtml(f, data[f.key])).join('')}
     </div></div>`).join('');
 }
