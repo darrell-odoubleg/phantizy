@@ -227,12 +227,13 @@ router.put('/festival-options/:id/run-of-show-table', requireStaff, (req, res) =
   // Artist rows (offer_id) only keep their Stage Setup; their name and times
   // always come from the offer / advance sheet (server/ros.js).
   // Changeover rows (co = following act's offer_id) and load-in rows (li =
-  // act's offer_id) likewise keep only Stage Setup.
+  // act's offer_id) likewise keep only Stage Setup; for load-in rows that's
+  // the note after "Load In" (sent as `note`).
   // Fixed rows (catering) come from server/ros.js and aren't stored.
   const rows = (Array.isArray(req.body.rows) ? req.body.rows : []).filter(r => !r.fixed).slice(0, 200)
     .map(r => (r.offer_id ? { offer_id: Number(r.offer_id), setup: str(r.setup, 300) }
       : r.co ? { co: Number(r.co), setup: str(r.setup, 300) }
-      : r.li ? { li: Number(r.li), setup: str(r.setup, 300) }
+      : r.li ? { li: Number(r.li), setup: str(r.note, 300) }
       : { item: str(r.item, 300), setup: str(r.setup, 300), time: time(r.time), end: time(r.end), duration: str(r.duration, 60) }))
     .filter(r => r.offer_id || ((r.co || r.li) && r.setup) || r.item || r.setup || r.time || r.duration);
   db.prepare(`INSERT INTO festival_ros (festival_id, stage, day, rows, updated_by_name, updated_at)
