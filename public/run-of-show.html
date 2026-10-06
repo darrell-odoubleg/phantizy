@@ -88,6 +88,7 @@ function render() {
     const t = TABLES.find(x => x.stage === stage && x.day === DAY) || { rows: [], pending: 0, overlaps: [] };
     const file = FILES.find(x => x.stage === stage && x.day === DAY);
     const acts = t.rows.filter(r => r.offer_id).length;
+    const built = t.rows.some(r => !r.fixed); // catering rows alone don't count
     const attrs = `data-stage="${esc(stage)}"`;
     const pdf = `/api/festival-options/${FEST.id}/run-of-show.pdf?stage=${encodeURIComponent(stage)}&day=${DAY}`;
     return `<div class="card ros-card">
@@ -103,12 +104,12 @@ function render() {
       ${(t.overlaps || []).map(([a, b]) => `<div class="note-box warn">${esc(a)} and ${esc(b)} overlap: check their Set time / Set ends on the advance sheets.</div>`).join('')}
       ${t.rows.length ? `<div class="table-wrap"><table class="ros-view">
         <thead><tr><th>Item</th><th>Stage Setup</th><th>Performance Time</th><th>Duration</th></tr></thead>
-        <tbody>${t.rows.map(r => `<tr class="${r.co ? 'co-row' : r.offer_id ? 'act-row' : ''}">
+        <tbody>${t.rows.map(r => `<tr class="${r.co ? 'co-row' : r.offer_id ? 'act-row' : r.fixed ? 'fixed-row' : ''}">
           <td>${r.offer_id ? `<a href="/offer.html?id=${r.offer_id}#advance">${esc(r.item)}</a>` : esc(r.item)}</td>
           <td>${esc(r.setup)}</td><td class="nowrap">${esc(perfTime(r))}</td><td class="nowrap">${esc(r.duration)}</td></tr>`).join('')}</tbody>
       </table></div>` : `<div class="empty">No rows yet. Acts appear here once their offers are accepted with this stage and date.</div>`}
       ${file ? `<div class="ros-file">Uploaded file: ${/^(application\/pdf|image\/(png|jpeg))$/.test(file.mime_type) ? `<a target="_blank" href="/api/festival-files/${file.id}/download?view=1">${esc(file.original_name)}</a>` : esc(file.original_name)}
-        <span class="meta">${fmtSize(file.size)} · ${esc(file.uploaded_by_name || '')}${t.rows.length ? ' · not sent, because the table above has rows' : ' · sent in welcome packages'}</span>
+        <span class="meta">${fmtSize(file.size)} · ${esc(file.uploaded_by_name || '')}${built ? ' · not sent, because the table above has rows' : ' · sent in welcome packages'}</span>
         <button class="icon-btn" data-del-file="${file.id}" title="Delete file">&times;</button></div>` : ''}
     </div>`;
   }).join('');
@@ -144,6 +145,12 @@ $('#rosFile').onchange = async (e) => {
 // ---- editor ----
 function renderRosRows() {
   $('#rosRows').innerHTML = rosEdit.rows.map((r, i) => {
+    if (r.fixed) {
+      return `<tr data-i="${i}" class="fixed-row">
+        <td><strong>${esc(r.item)}</strong> <span class="pill" title="Added to every stage and day">every day</span></td>
+        <td></td><td>${esc(fmtT(r.time))}</td><td>${esc(fmtT(r.end))}</td><td>${esc(r.duration)}</td><td></td>
+      </tr>`;
+    }
     if (r.offer_id || r.co) {
       return `<tr data-i="${i}" class="${r.co ? 'co-row' : 'artist-row'}">
         <td>${r.co ? 'Changeover' : `<strong>${esc(r.item)}</strong>`} <span class="pill" title="${r.co ? 'Between the previous set end and the next set start' : 'From the offer and its advance sheet'}">${r.co ? 'auto' : 'from advance'}</span></td>

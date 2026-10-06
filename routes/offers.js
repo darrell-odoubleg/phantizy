@@ -260,7 +260,7 @@ function welcomeAttachments(offer) {
     path: path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name)) });
   // The run of show for this act's stage and performance date goes first:
   // the built table (artists auto-filled from the advance sheets) if it has
-  // rows, otherwise an uploaded file.
+  // rows beyond the fixed catering rows, otherwise an uploaded file.
   const norm = (s) => String(s || '').trim().toLowerCase();
   const fest = db.prepare('SELECT stages FROM festivals WHERE name = ?').get(offer.festival_name);
   let stages = [];
@@ -268,7 +268,7 @@ function welcomeAttachments(offer) {
   const stage = stages.find(s => norm(s) === norm(offer.stage));
   const { rows } = stage && offer.event_date ? runOfShowRows(offer.festival_name, stage, offer.event_date) : { rows: [] };
   let ros;
-  if (rows.length) {
+  if (rows.some(r => !r.fixed)) {
     ros = [{ source: 'ros', id: 'slot', kind: 'run_of_show', label: 'Run of show', name: `Run of show: ${stage}, ${rows.length} items`,
       size: null, mime: 'application/pdf',
       build: (out) => runOfShowPdf({ festival: offer.festival_name, stage, day: offer.event_date, rows, highlight: offer.artist_name, highlightOfferId: offer.id }, out) }];

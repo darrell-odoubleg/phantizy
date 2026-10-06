@@ -160,6 +160,8 @@ dialog.modal.wide{width:min(980px,calc(100vw - 24px));}
 .ros-view tr.co-row td,.ros-edit tr.co-row td{color:var(--dim);font-style:italic;}
 .ros-edit tr.co-row td{background:#fbfbfc;vertical-align:middle;font-size:13px;}
 .ros-edit tr.co-row input{font-style:normal;}
+.ros-view tr.fixed-row td,.ros-edit tr.fixed-row td{color:#d00000;font-weight:600;}
+.ros-edit tr.fixed-row td{vertical-align:middle;font-size:13px;}
 
 /* Email dialog */
 dialog.modal{border:none;border-radius:10px;padding:0;width:min(640px,calc(100vw - 24px));box-shadow:0 20px 60px rgba(0,0,0,.3);}

@@ -7,10 +7,21 @@
 // curfew, meet & greets). A Changeover row is added automatically between
 // each pair of consecutive acts (previous set end → next set start); its
 // Stage Setup is stored by the following act's offer_id ({ co: id }).
-// Everything is sorted by start time.
+// Festival-wide fixed rows (catering) are added to every stage and day,
+// shown in red and never stored. Everything is sorted by start time.
 
 const db = require('../db/init');
 const { RESTRICTED_STATUSES } = require('../public/fields');
+
+// Fixed rows per festival: on every stage, every festival day.
+const FIXED_ROWS = [{
+  match: /rock the locks/i,
+  rows: [
+    { item: 'Catered Breakfast', time: '08:00', end: '11:00' },
+    { item: 'Catered Lunch', time: '12:00', end: '15:00' },
+    { item: 'Catered Dinner', time: '17:00', end: '20:00' },
+  ],
+}];
 
 const toMin = (t) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t || '');
@@ -68,6 +79,8 @@ function runOfShowRows(festivalName, stage, day) {
     item: r.item || '', setup: r.setup || '', time: r.time || '', end: r.end || '',
     duration: r.duration || durationText(r.time, r.end),
   }));
+  const fixedRows = ((FIXED_ROWS.find(f => f.match.test(festivalName || '')) || {}).rows || [])
+    .map(r => ({ ...r, setup: '', duration: durationText(r.time, r.end), fixed: true }));
   // Changeovers between consecutive acts (in set-time order).
   const timed = artistRows.filter(r => toMin(r.time) !== null).sort((a, b) => toMin(a.time) - toMin(b.time));
   const changeovers = [], overlaps = [];
@@ -82,7 +95,7 @@ function runOfShowRows(festivalName, stage, day) {
   }
   // Sort by start time (a changeover sorts after a row starting at the same
   // minute); rows without a time keep their order at the end.
-  const all = [...artistRows, ...manualRows, ...changeovers].map((r, i) => ({ r, i, t: toMin(r.time), co: r.co ? 1 : 0 }));
+  const all = [...artistRows, ...manualRows, ...changeovers, ...fixedRows].map((r, i) => ({ r, i, t: toMin(r.time), co: r.co ? 1 : 0 }));
   all.sort((a, b) => (a.t ?? 1e9) - (b.t ?? 1e9) || a.co - b.co || a.i - b.i);
   return { rows: all.map(x => x.r), pending: offers.filter(o => !RESTRICTED_STATUSES.includes(o.status)).length, overlaps };
 }
