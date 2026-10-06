@@ -36,7 +36,7 @@
     { title: 'Performance', fields: [
       { key: 'event_date', label: 'Performance date', type: 'date' },
       { key: 'alt_dates', label: 'Alternate days' },
-      { key: 'stage', label: 'Stage' },
+      { key: 'stage', label: 'Stage', type: 'select', options: [], optionsFrom: 'festival_stages' }, // the festival's stages (Settings)
       { key: 'billing', label: 'Lineup position', type: 'select', options: ['Headliner', 'Sub-headliner', 'Main support', 'Mid-card', 'Early slot', 'Local / opener'] },
       { key: 'show_time', label: 'Set time (approx.)', type: 'time' },
       { key: 'set_length', label: 'Set length' },
@@ -171,7 +171,7 @@
   const ROLES = { admin: 'Admin', staff: 'Staff', production: 'Production', accounting: 'Accounting' };
   const RESTRICTED_STATUSES = ['accepted', 'completed'];
   const ROLE_DOC_KINDS = {
-    production: ['rider_technical', 'rider_hospitality', 'stage_plot', 'run_of_show'],
+    production: ['rider_technical', 'rider_hospitality', 'stage_plot'],
     accounting: ['contract', 'fec', 'w9', 'coi'],
   };
 
@@ -182,13 +182,13 @@
     rider_technical: 'Technical rider',
     rider_hospitality: 'Hospitality rider',
     stage_plot: 'Stage plot / input list',
-    run_of_show: 'Run of show',
     w9: 'W-9',
     other: 'Other',
   };
 
   // Files attached to every welcome package for a festival (Settings →
-  // Festivals → Details & welcome). The per-show Run of show is a DOC_KIND.
+  // Festivals → Details & welcome). Runs of show are festival files too
+  // (kind 'run_of_show', one per stage per day), matched to each show.
   const WELCOME_FILE_KINDS = {
     audio_specs: 'Audio specs',
     lighting_specs: 'Lighting specs',

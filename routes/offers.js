@@ -252,19 +252,31 @@ function festivalWelcome(offer) {
 // Files that go out with this show's welcome package: the festival's shared
 // files (audio/lighting specs, plot, directions, map) plus this show's run of show.
 function welcomeAttachments(offer) {
-  const fest = db.prepare(`SELECT ff.* FROM festival_files ff JOIN festivals f ON f.id = ff.festival_id
-    WHERE f.name = ? ORDER BY ff.uploaded_at`).all(offer.festival_name)
-    .map(f => ({ source: 'festival', id: f.id, kind: f.kind, label: WELCOME_FILE_KINDS[f.kind] || 'Other',
-      name: f.original_name, size: f.size, mime: f.mime_type,
-      path: path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name)) }));
-  const ros = db.prepare("SELECT * FROM documents WHERE offer_id = ? AND kind = 'run_of_show' ORDER BY uploaded_at").all(offer.id)
-    .map(d => ({ source: 'offer', id: d.id, kind: d.kind, label: 'Run of show',
-      name: d.original_name, size: d.size, mime: d.mime_type,
-      path: path.join(UPLOAD_DIR, String(d.offer_id), path.basename(d.stored_name)) }));
-  // Festival files in their defined order, then the run of show.
+  const all = db.prepare(`SELECT ff.* FROM festival_files ff JOIN festivals f ON f.id = ff.festival_id
+    WHERE f.name = ? ORDER BY ff.uploaded_at`).all(offer.festival_name);
+  const asAtt = (f, label) => ({ source: 'festival', id: f.id, kind: f.kind, label,
+    name: f.original_name, size: f.size, mime: f.mime_type,
+    path: path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name)) });
+  // The run of show for this act's stage and performance date goes first.
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const ros = all.filter(f => f.kind === 'run_of_show' && norm(f.stage) === norm(offer.stage) && f.day === offer.event_date)
+    .map(f => asAtt(f, 'Run of show'));
   const order = Object.keys(WELCOME_FILE_KINDS);
-  fest.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
-  return [...fest, ...ros];
+  const rest = all.filter(f => f.kind !== 'run_of_show')
+    .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
+    .map(f => asAtt(f, WELCOME_FILE_KINDS[f.kind] || 'Other'));
+  return [...ros, ...rest];
+}
+
+// Why no run of show matched (shown in the email dialog), or null.
+function runOfShowGap(offer) {
+  const fest = db.prepare('SELECT stages, days FROM festivals WHERE name = ?').get(offer.festival_name);
+  const list = (s) => { try { return JSON.parse(s) || []; } catch { return []; } };
+  const stages = fest ? list(fest.stages) : [], days = fest ? list(fest.days) : [];
+  if (!offer.stage || !offer.event_date) return 'Set this show\'s stage and performance date on the Offer sheet so its run of show can be included.';
+  if (!days.includes(offer.event_date)) return `The performance date isn't one of the festival days in Settings, so no run of show matches.`;
+  if (!stages.some(s => s.trim().toLowerCase() === offer.stage.trim().toLowerCase())) return `"${offer.stage}" isn't one of the festival's stages in Settings, so no run of show matches.`;
+  return `No run of show uploaded yet for ${offer.stage} on this date (Settings → Festivals → Details & welcome).`;
 }
 const publicAttachment = ({ path: _p, ...a }) => ({ ...a, mergeable: pdfMerge.canMerge(a) });
 
@@ -359,6 +371,7 @@ router.get('/offers/:id/welcome', loadOffer, (req, res) => {
     from: mailer.fromAddress(),
     hasFestivalText: !!(welcome.intro || (welcome.sections || []).length),
     attachments: welcomeAttachments(req.offer).map(publicAttachment),
+    runOfShowNote: welcomeAttachments(req.offer).some(a => a.kind === 'run_of_show') ? null : runOfShowGap(req.offer),
     to: adv.tour_manager_email || '',
     cc: req.user.email,
     // Festival's own subject line (Settings → Festivals → Details & welcome), else a default.

@@ -90,6 +90,29 @@ async function loadFieldOptions(sections) {
   fields.forEach(f => { f.options = names; });
 }
 
+// Stage dropdown options = the chosen festival's stages (Settings → Festivals).
+function stagesFor(festivalName) {
+  const f = (window.FESTIVALS || []).find(x => x.name === festivalName);
+  return (f && f.stages) || [];
+}
+function setStageField(sections, festivalName) {
+  sections.flatMap(s => s.fields).filter(f => f.optionsFrom === 'festival_stages')
+    .forEach(f => { f.options = stagesFor(festivalName); });
+}
+// Rebuilds the Stage <select> in place, keeping the current value.
+function refreshStageSelect(form, festivalName) {
+  const el = form.querySelector('[name="stage"]');
+  if (!el || el.tagName !== 'SELECT') return;
+  const cur = el.value;
+  const opts = stagesFor(festivalName);
+  const list = cur && !opts.includes(cur) ? [cur, ...opts] : opts;
+  el.innerHTML = '<option value=""></option>' + list.map(o => `<option${o === cur ? ' selected' : ''}>${esc(o)}</option>`).join('');
+}
+function festivalDays(festivalName) {
+  const f = (window.FESTIVALS || []).find(x => x.name === festivalName);
+  return (f && f.days) || [];
+}
+
 // Fills the empty festival-wide inputs in a form from the chosen festival's
 // saved details (Settings → Festivals → Details). Never overwrites.
 function applyFestivalDetails(form, name) {

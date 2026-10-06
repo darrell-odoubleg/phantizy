@@ -16,6 +16,7 @@ const cleanRole = (r) => (ROLES[r] ? r : 'staff');
 const FESTIVAL_DETAIL_FIELDS = OFFER_SECTIONS.filter(s => s.festivalWide).flatMap(s => s.fields)
   .filter(f => f.key !== 'festival_name' && !f.internal);
 const parseDetails = (s) => { try { return JSON.parse(s) || {}; } catch { return {}; } };
+const parseList = (s) => { try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; } };
 
 const router = express.Router();
 
@@ -69,16 +70,16 @@ router.patch('/users/:id', requireAdmin, (req, res) => {
 
 router.get('/festival-options', (req, res) => {
   const all = req.query.all === '1' && req.user.role === 'admin';
-  const rows = db.prepare(`SELECT f.id, f.name, f.active, f.details,
+  const rows = db.prepare(`SELECT f.id, f.name, f.active, f.details, f.stages, f.days,
       (SELECT COUNT(*) FROM offers o WHERE o.festival_name = f.name) AS offers
     FROM festivals f ${all ? '' : 'WHERE f.active = 1'} ORDER BY f.name`).all();
-  res.json(rows.map(r => ({ ...r, details: parseDetails(r.details) })));
+  res.json(rows.map(r => ({ ...r, details: parseDetails(r.details), stages: parseList(r.stages), days: parseList(r.days) })));
 });
 
 router.get('/festival-options/:id', (req, res) => {
-  const f = db.prepare('SELECT id, name, active, details, welcome FROM festivals WHERE id = ?').get(Number(req.params.id));
+  const f = db.prepare('SELECT id, name, active, details, welcome, stages, days FROM festivals WHERE id = ?').get(Number(req.params.id));
   if (!f) return res.status(404).json({ error: 'Festival not found' });
-  res.json({ ...f, details: parseDetails(f.details), welcome: parseDetails(f.welcome) });
+  res.json({ ...f, details: parseDetails(f.details), welcome: parseDetails(f.welcome), stages: parseList(f.stages), days: parseList(f.days) });
 });
 
 // Welcome package letter text for this festival.
@@ -144,13 +145,78 @@ router.patch('/festival-options/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+const festivalFilePath = (f) => path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name));
+
+// ---- stages & festival days (drive the Stage dropdown and the run-of-show grid) ----
+
+router.put('/festival-options/:id/schedule', requireAdmin, (req, res) => {
+  const f = db.prepare('SELECT * FROM festivals WHERE id = ?').get(Number(req.params.id));
+  if (!f) return res.status(404).json({ error: 'Festival not found' });
+  const b = req.body || {};
+  const stages = (Array.isArray(b.stages) ? b.stages : []).map(s => String(s).trim()).filter(Boolean).slice(0, 12);
+  const days = (Array.isArray(b.days) ? b.days : []).map(s => String(s).trim()).filter(Boolean).slice(0, 14);
+  if (new Set(stages.map(s => s.toLowerCase())).size !== stages.length) return res.status(400).json({ error: 'Two stages have the same name' });
+  if (days.some(d => !/^\d{4}-\d{2}-\d{2}$/.test(d))) return res.status(400).json({ error: 'Each festival day needs a date' });
+  if (new Set(days).size !== days.length) return res.status(400).json({ error: 'The same day is listed twice' });
+  const oldStages = parseList(f.stages), oldDays = parseList(f.days);
+  db.transaction(() => {
+    // A stage renamed in place carries its run-of-show files and offers along.
+    oldStages.forEach((old, i) => {
+      const now = stages[i];
+      if (now && now !== old && !oldStages.includes(now)) {
+        db.prepare("UPDATE festival_files SET stage = ? WHERE festival_id = ? AND kind = 'run_of_show' AND stage = ?").run(now, f.id, old);
+        db.prepare('UPDATE offers SET stage = ? WHERE festival_name = ? AND stage = ?').run(now, f.name, old);
+      }
+    });
+    // A day changed in place carries its run-of-show files along.
+    oldDays.forEach((old, i) => {
+      const now = days[i];
+      if (now && now !== old && !oldDays.includes(now)) {
+        db.prepare("UPDATE festival_files SET day = ? WHERE festival_id = ? AND kind = 'run_of_show' AND day = ?").run(now, f.id, old);
+      }
+    });
+    // Removing a stage or day that still has a run of show would orphan it.
+    const orphan = db.prepare(`SELECT stage, day FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show'`).all(f.id)
+      .find(r => !stages.includes(r.stage) || !days.includes(r.day));
+    if (orphan) throw Object.assign(new Error(`Delete the run of show for ${orphan.stage} on ${orphan.day} before removing that stage or day`), { status: 409 });
+    db.prepare('UPDATE festivals SET stages = ?, days = ? WHERE id = ?').run(JSON.stringify(stages), JSON.stringify(days), f.id);
+  })();
+  res.json({ ok: true });
+});
+
+router.get('/festival-options/:id/run-of-show', requireAdmin, (req, res) => {
+  res.json(db.prepare(`SELECT id, stage, day, original_name, mime_type, size, uploaded_by_name, uploaded_at
+    FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show'`).all(Number(req.params.id)));
+});
+
+// One file per stage + day; uploading again replaces it.
+router.post('/festival-options/:id/run-of-show', requireAdmin, (req, res, next) => {
+  if (!db.prepare('SELECT 1 FROM festivals WHERE id = ?').get(Number(req.params.id))) return res.status(404).json({ error: 'Festival not found' });
+  next();
+}, festivalUpload.single('file'), (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'Choose a file to upload' });
+  const drop = (msg, status = 400) => { fs.rmSync(file.path, { force: true }); res.status(status).json({ error: msg }); };
+  if (!/\.(pdf|png|jpe?g)$/i.test(file.originalname)) return drop('Run of show must be a PDF, PNG or JPEG so it can be combined into the welcome package');
+  const fest = db.prepare('SELECT * FROM festivals WHERE id = ?').get(Number(req.params.id));
+  const stage = String(req.body.stage || ''), day = String(req.body.day || '');
+  if (!parseList(fest.stages).includes(stage) || !parseList(fest.days).includes(day)) return drop('Unknown stage or day');
+  const old = db.prepare("SELECT * FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show' AND stage = ? AND day = ?").all(fest.id, stage, day);
+  db.transaction(() => {
+    old.forEach(o => db.prepare('DELETE FROM festival_files WHERE id = ?').run(o.id));
+    db.prepare(`INSERT INTO festival_files (festival_id, kind, stage, day, original_name, stored_name, mime_type, size, uploaded_by_name)
+                VALUES (?, 'run_of_show', ?, ?, ?, ?, ?, ?, ?)`).run(fest.id, stage, day, file.originalname, file.filename, file.mimetype, file.size, req.user.name);
+  })();
+  old.forEach(o => fs.rmSync(festivalFilePath(o), { force: true }));
+  res.json({ ok: true, replaced: old.length > 0 });
+});
+
 // ---- festival welcome-package files (same for every act) ----
 
-const festivalFilePath = (f) => path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name));
 
 router.get('/festival-options/:id/files', requireAdmin, (req, res) => {
   res.json(db.prepare(`SELECT id, kind, original_name, mime_type, size, uploaded_by_name, uploaded_at
-    FROM festival_files WHERE festival_id = ? ORDER BY uploaded_at`).all(Number(req.params.id)));
+    FROM festival_files WHERE festival_id = ? AND kind != 'run_of_show' ORDER BY uploaded_at`).all(Number(req.params.id)));
 });
 
 router.post('/festival-options/:id/files', requireAdmin, (req, res, next) => {

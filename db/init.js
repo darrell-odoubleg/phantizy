@@ -155,6 +155,10 @@ addMissingColumns('festivals', [{ key: 'details' }]);
 // Welcome package letter for the festival (JSON: dos_name, dos_phone, intro,
 // sections [{heading, body}], closing, signoff).
 addMissingColumns('festivals', [{ key: 'welcome' }]);
+// JSON arrays: stage names, and festival days as YYYY-MM-DD.
+addMissingColumns('festivals', [{ key: 'stages' }, { key: 'days' }]);
+// Run of show files are festival_files with kind 'run_of_show' plus a stage and day.
+addMissingColumns('festival_files', [{ key: 'stage' }, { key: 'day' }]);
 addMissingColumns('advances', ADVANCE_FIELDS);
 
 const DEFAULT_CHECKLIST = [

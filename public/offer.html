@@ -133,7 +133,16 @@ let dirty = { offer: false, advance: false, payments: false };
 renderSections($('#offerForm'), PF.OFFER_SECTIONS);
 $('#offerForm').addEventListener('input', () => setDirty('offer', true));
 $('#offerForm').addEventListener('change', (e) => {
+  if (e.target.name === 'event_date') {
+    const fest = $('#offerForm [name="festival_name"]').value;
+    const days = festivalDays(fest);
+    if (e.target.value && days.length && !days.includes(e.target.value)) {
+      toast(`That date isn't one of ${fest}'s festival days (${days.map(fmtDate).join(', ')})`, true);
+    }
+    return;
+  }
   if (e.target.name !== 'festival_name') return;
+  refreshStageSelect($('#offerForm'), e.target.value);
   const n = applyFestivalDetails($('#offerForm'), e.target.value);
   if (n) toast(`Filled ${n} festival detail${n > 1 ? 's' : ''} from Settings`);
 });
@@ -188,6 +197,7 @@ async function load() {
   $('#delBtn').hidden = ME.role !== 'admin';
   $('#status').innerHTML = PF.STATUSES.map(s => `<option value="${s}"${s === o.status ? ' selected' : ''}>${STATUS_LABEL[s]}</option>`).join('');
   $('#saveOffer').textContent = 'Save offer';
+  setStageField(PF.OFFER_SECTIONS, o.festival_name);
   if (!dirty.offer) renderSections($('#offerForm'), PF.OFFER_SECTIONS, o);
   renderChecklist();
 }
@@ -274,18 +284,20 @@ $('#welcomeBtn').onclick = async () => {
     $('#wPdfLink').href = `/api/offers/${id}/welcome.pdf`;
     $('#wSend').disabled = !w.configured;
     WATTS = w.attachments || [];
+    RUN_NOTE = w.runOfShowNote;
     renderAtts();
     $('#welcomeDlg').showModal();
     (w.to ? $('#wMessage') : $('#wTo')).focus();
   } catch (e) { toast(e.message, true); }
 };
 let WATTS = [];
+let RUN_NOTE = null;
 function renderAtts() {
-  const hasRos = WATTS.some(a => a.kind === 'run_of_show');
+
   $('#wAtts').innerHTML = `<div class="att-row"><input type="checkbox" checked disabled> <span class="pill">Letter</span> Welcome letter (PDF)</div>`
     + WATTS.map(a => `<label class="att-row"><input type="checkbox" data-att="${a.source}:${a.id}" data-size="${a.size || 0}" checked>
         <span class="pill">${esc(a.label)}</span> ${esc(a.name)}${a.mergeable ? '' : ' <em class="sep-note">attached separately (Word/Excel can\'t be combined)</em>'} <span class="meta">${fmtSize(a.size || 0)}</span></label>`).join('')
-    + (hasRos ? '' : `<div class="att-hint">No run of show uploaded for this show yet. Upload one on the ${ROLE === 'production' ? 'Riders &amp; stage plots' : 'Contracts &amp; riders'} tab (type: Run of show).</div>`)
+    + (RUN_NOTE ? `<div class="att-hint">${esc(RUN_NOTE)}</div>` : '')
     + '<div class="att-total" id="wAttTotal"></div>';
   attTotal();
 }
@@ -486,6 +498,7 @@ initNav(id ? 'offers' : 'new').then(async () => {
       const pre = {};
       PF.OFFER_SECTIONS.filter(s => s.festivalWide).flatMap(s => s.fields)
         .filter(f => !f.internal).forEach(f => { pre[f.key] = src[f.key]; });
+      setStageField(PF.OFFER_SECTIONS, pre.festival_name);
       renderSections($('#offerForm'), PF.OFFER_SECTIONS, pre);
       applyFestivalDetails($('#offerForm'), pre.festival_name);
       $('#title').textContent = 'New artist — ' + (src.festival_name || 'festival');
@@ -494,6 +507,7 @@ initNav(id ? 'offers' : 'new').then(async () => {
     } else {
       // Only one festival on the list? Pick it.
       const opts = PF.OFFER_FIELDS.find(f => f.key === 'festival_name').options;
+      setStageField(PF.OFFER_SECTIONS, opts.length === 1 ? opts[0] : '');
       renderSections($('#offerForm'), PF.OFFER_SECTIONS, opts.length === 1 ? { festival_name: opts[0] } : {});
       if (opts.length === 1) applyFestivalDetails($('#offerForm'), opts[0]);
       $(opts.length === 1 ? '#f_artist_name' : '#f_festival_name').focus();

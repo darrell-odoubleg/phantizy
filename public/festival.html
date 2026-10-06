@@ -18,6 +18,23 @@
     <span class="msg" id="msg"></span>
   </div>
 
+  <h1 style="margin-top:34px">Stages &amp; run of show</h1>
+  <p class="subtitle">The stages fill each offer's Stage dropdown. Each act's welcome package automatically includes the run of show for its stage and performance date.</p>
+  <div class="card">
+    <h2>Stages &amp; festival days</h2>
+    <div class="grid">
+      <div><label>Stages</label><div id="stageList"></div><button type="button" class="btn outline sm" id="addStage">+ Stage</button></div>
+      <div><label>Festival days</label><div id="dayList"></div><button type="button" class="btn outline sm" id="addDay">+ Day</button></div>
+    </div>
+    <div class="btn-row" style="margin-top:14px"><button type="button" class="btn" id="saveSchedule">Save stages &amp; days</button><span class="msg" id="smsg" style="font-size:13px;color:var(--dim)"></span></div>
+  </div>
+  <div class="card">
+    <h2>Run of show (one per stage, per day)</h2>
+    <p style="margin:-6px 0 12px;color:var(--dim);font-size:13px">PDF, PNG or JPEG. Uploading to a slot that already has a file replaces it.</p>
+    <div class="table-wrap"><table class="ros-grid" id="rosGrid"></table></div>
+    <input type="file" id="rosFile" hidden accept=".pdf,.png,.jpg,.jpeg">
+  </div>
+
   <h1 style="margin-top:34px">Welcome package</h1>
   <p class="subtitle">The letter emailed to each act's tour manager from the offer's Advance sheet tab. It's combined with that show's date, stage, set time, hotel and advance details. You can use {artist}, {festival}, {date}, {stage}, {tm}, {dos_name} and {dos_phone} in the text. Sections with no text are left off the letter.</p>
   <form id="welcomeForm" novalidate>
@@ -81,7 +98,7 @@ const SECTIONS = PF.OFFER_SECTIONS.filter(s => s.festivalWide)
 let dirty = false;
 
 $('#form').addEventListener('input', () => { dirty = true; $('#msg').innerHTML = 'Unsaved changes<span class="dirty-dot"></span>'; });
-window.addEventListener('beforeunload', (e) => { if (dirty || wDirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => { if (dirty || wDirty || sDirty) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---- welcome package ----
 let wSections = [];
@@ -172,6 +189,92 @@ $('#fList').onclick = async (e) => {
   catch (ex) { toast(ex.message, true); }
 };
 
+// ---- stages, days, run of show ----
+let STAGES = [], DAYS = [];
+let sDirty = false;
+function sMark() { sDirty = true; $('#smsg').innerHTML = 'Unsaved changes<span class="dirty-dot"></span>'; }
+function renderSchedule() {
+  $('#stageList').innerHTML = STAGES.map((s, i) => `<div class="list-row" data-i="${i}">
+      <input type="text" data-k="stage" value="${esc(s)}" placeholder="Stage name">
+      <button type="button" class="icon-btn" data-rm="stage" title="Remove">&times;</button></div>`).join('');
+  $('#dayList').innerHTML = DAYS.map((d, i) => `<div class="list-row" data-i="${i}">
+      <input type="date" data-k="day" value="${esc(d)}">
+      <button type="button" class="icon-btn" data-rm="day" title="Remove">&times;</button></div>`).join('');
+}
+for (const id of ['#stageList', '#dayList']) {
+  $(id).addEventListener('input', (e) => {
+    const row = e.target.closest('[data-i]'); if (!row) return;
+    (e.target.dataset.k === 'stage' ? STAGES : DAYS)[row.dataset.i] = e.target.value; sMark();
+  });
+  $(id).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rm]'); if (!b) return;
+    (b.dataset.rm === 'stage' ? STAGES : DAYS).splice(Number(b.closest('[data-i]').dataset.i), 1); sMark(); renderSchedule();
+  });
+}
+$('#addStage').onclick = () => { STAGES.push(''); sMark(); renderSchedule(); $('#stageList .list-row:last-child input').focus(); };
+$('#addDay').onclick = () => {
+  // Next day after the last one, as a convenience.
+  const last = DAYS.filter(Boolean).slice(-1)[0];
+  let next = '';
+  if (last) { const d = new Date(last + 'T00:00:00'); d.setDate(d.getDate() + 1); next = d.toISOString().slice(0, 10); }
+  DAYS.push(next); sMark(); renderSchedule();
+};
+$('#saveSchedule').onclick = async () => {
+  try {
+    await api(`/festival-options/${id}/schedule`, { method: 'PUT', body: { stages: STAGES, days: DAYS } });
+    sDirty = false; $('#smsg').textContent = ''; toast('Stages & days saved');
+    await loadRos();
+  } catch (e) { toast(e.message, true); }
+};
+
+let ROS = [];
+let rosTarget = null;
+async function loadRos() {
+  const f = await api('/festival-options/' + id);
+  STAGES = f.stages; DAYS = f.days;
+  if (!sDirty) renderSchedule();
+  ROS = await api(`/festival-options/${id}/run-of-show`);
+  const stages = f.stages, days = [...f.days].sort();
+  if (!stages.length || !days.length) {
+    $('#rosGrid').innerHTML = '<tr><td class="empty">Add the stages and festival days above first.</td></tr>';
+    return;
+  }
+  $('#rosGrid').innerHTML = `<thead><tr><th>Day</th>${stages.map(s => `<th>${esc(s)}</th>`).join('')}</tr></thead><tbody>`
+    + days.map(d => `<tr><td><strong>${esc(fmtDate(d))}</strong></td>${stages.map(s => {
+      const r = ROS.find(x => x.stage === s && x.day === d);
+      const attrs = `data-stage="${esc(s)}" data-day="${esc(d)}"`;
+      return `<td>${r ? `<div class="ros-file">${/^(application\/pdf|image\/(png|jpeg))$/.test(r.mime_type) ? `<a target="_blank" href="/api/festival-files/${r.id}/download?view=1">${esc(r.original_name)}</a>` : esc(r.original_name)}
+          <span class="meta">${fmtSize(r.size)} · ${esc(r.uploaded_by_name || '')}</span></div>
+          <div class="btn-row"><button type="button" class="btn outline sm" data-up ${attrs}>Replace</button><button type="button" class="icon-btn" data-del-ros="${r.id}" title="Delete">&times;</button></div>`
+        : `<button type="button" class="btn outline sm" data-up ${attrs}>Upload</button>`}</td>`;
+    }).join('')}</tr>`).join('') + '</tbody>';
+}
+$('#rosGrid').addEventListener('click', async (e) => {
+  const up = e.target.closest('[data-up]');
+  if (up) {
+    if (sDirty) { toast('Save stages & days first', true); return; }
+    rosTarget = { stage: up.dataset.stage, day: up.dataset.day }; $('#rosFile').click(); return;
+  }
+  const del = e.target.closest('[data-del-ros]');
+  if (del) {
+    if (!confirm('Delete this run of show?')) return;
+    try { await api('/festival-files/' + del.dataset.delRos, { method: 'DELETE' }); toast('Run of show deleted'); loadRos(); }
+    catch (ex) { toast(ex.message, true); }
+  }
+});
+$('#rosFile').onchange = async (e) => {
+  const file = e.target.files[0]; if (!file || !rosTarget) return;
+  const fd = new FormData();
+  fd.append('stage', rosTarget.stage); fd.append('day', rosTarget.day); // fields before the file
+  fd.append('file', file);
+  try {
+    const r = await api(`/festival-options/${id}/run-of-show`, { method: 'POST', body: fd });
+    toast(`Run of show ${r.replaced ? 'replaced' : 'uploaded'}: ${rosTarget.stage}, ${fmtDate(rosTarget.day)}`);
+    loadRos();
+  } catch (ex) { toast(ex.message, true); }
+  finally { e.target.value = ''; rosTarget = null; }
+};
+
 function loadWelcome(w) {
   $('#w_subject').value = w.subject || '';
   $('#w_dos_name').value = w.dos_name || '';
@@ -201,6 +304,7 @@ initNav('admin').then(async () => {
     renderSections($('#form'), SECTIONS, f.details);
     loadWelcome(f.welcome || {});
     loadFiles();
+    loadRos();
   } catch (e) {
     $('#title').textContent = 'Festival not found';
     $('#save').hidden = true;
