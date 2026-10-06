@@ -293,10 +293,8 @@ function welcomeLetterPdf(offer, advance, welcome, out, contents = [], separate 
     { key: 'hotel_confirmation', label: 'Hotel confirmation #' },
     { key: 'hotel_rooms', label: 'Rooms' },
     { key: 'hotel_checkin', label: 'Check-in / out' },
-    { key: 'stage_manager_name', label: 'Stage manager' },
-    { key: 'stage_manager_phone', label: 'Stage manager phone' },
-    { key: 'artist_relations_name', label: 'Artist relations' },
-    { key: 'artist_relations_phone', label: 'Artist relations phone' },
+    { key: 'artist_relations_name', label: 'Catering / Hospitality' },
+    { key: 'artist_relations_phone', label: 'Catering / Hospitality phone' },
   ], show);
 
   for (const sec of welcome.sections || []) {
