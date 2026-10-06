@@ -65,24 +65,39 @@ function requireAdmin(req, res, next) {
   res.status(403).json({ error: 'Admins only' });
 }
 
-// Production users (technicians / production managers) may only make these
-// requests; everything else under /api is refused. Row-level limits (which
-// offers, which documents, which fields) are applied in routes/offers.js.
-const PRODUCTION_ALLOWED = [
+// Restricted roles may only make these requests; everything else under /api
+// is refused. Row-level limits (which offers, documents and fields) are
+// applied in routes/offers.js.
+const COMMON_ALLOWED = [
   ['GET', /^\/api\/me$/],
   ['POST', /^\/api\/me\/password$/],
   ['GET', /^\/api\/offers$/],
   ['GET', /^\/api\/festivals$/],
   ['GET', /^\/api\/offers\/\d+$/],
-  ['PUT', /^\/api\/offers\/\d+\/advance$/],
-  ['GET', /^\/api\/offers\/\d+\/advance-sheet\.pdf$/],
   ['POST', /^\/api\/offers\/\d+\/documents$/],
   ['GET', /^\/api\/documents\/\d+\/download$/],
 ];
-function productionGate(req, res, next) {
-  if (req.user.role !== 'production' || !req.path.startsWith('/api/')) return next();
-  if (PRODUCTION_ALLOWED.some(([m, re]) => m === req.method && re.test(req.path))) return next();
-  res.status(403).json({ error: 'Production accounts can only use riders, stage plots and advance sheets' });
+const ROLE_ALLOWED = {
+  production: [
+    ...COMMON_ALLOWED,
+    ['PUT', /^\/api\/offers\/\d+\/advance$/],
+    ['GET', /^\/api\/offers\/\d+\/advance-sheet\.pdf$/],
+  ],
+  accounting: [
+    ...COMMON_ALLOWED,
+    ['PUT', /^\/api\/offers\/\d+\/payments$/],
+    ['GET', /^\/api\/offers\/\d+\/offer-sheet\.pdf$/],
+  ],
+};
+const ROLE_DENIED_MSG = {
+  production: 'Production accounts can only use riders, stage plots and advance sheets',
+  accounting: 'Accounting accounts can only view offers, W-9s and payments',
+};
+function roleGate(req, res, next) {
+  const allowed = ROLE_ALLOWED[req.user.role];
+  if (!allowed || !req.path.startsWith('/api/')) return next();
+  if (allowed.some(([m, re]) => m === req.method && re.test(req.path))) return next();
+  res.status(403).json({ error: ROLE_DENIED_MSG[req.user.role] });
 }
 
 function hashPassword(pw) {
@@ -90,4 +105,4 @@ function hashPassword(pw) {
   return bcrypt.hashSync(String(pw), 12);
 }
 
-module.exports = { router, requireAuth, requireAdmin, productionGate, hashPassword };
+module.exports = { router, requireAuth, requireAdmin, roleGate, hashPassword };

@@ -26,6 +26,7 @@
     <button data-tab="offer" class="active">Offer sheet</button>
     <button data-tab="advance">Advance sheet</button>
     <button data-tab="docs">Contracts &amp; riders <span class="count" id="docCount">0</span></button>
+    <button data-tab="payments">Payments <span class="count" id="payCount">0/3</span></button>
     <button data-tab="checklist">Checklist <span class="count" id="clCount">0/0</span></button>
   </div>
 
@@ -66,6 +67,16 @@
     <div class="card" id="docList"></div>
   </section>
 
+  <!-- Payments (accounting) -->
+  <section class="tab-panel" data-panel="payments" hidden>
+    <div class="card"><h2>Deal</h2><div class="grid" id="dealSummary"></div></div>
+    <form id="paymentsForm" novalidate></form>
+    <div class="savebar">
+      <button class="btn" id="savePayments">Save payments</button>
+      <span class="msg" id="paymentsMsg"></span>
+    </div>
+  </section>
+
   <!-- Checklist -->
   <section class="tab-panel" data-panel="checklist" hidden>
     <div class="card">
@@ -75,7 +86,7 @@
         <input type="text" id="clNew" placeholder="Add a task for this show…">
         <button class="btn sm">Add</button>
       </form>
-      <p style="font-size:12px;color:var(--dim);margin:12px 0 0">Items tagged <span class="auto">auto</span> tick themselves when the status changes or a contract/rider is uploaded. Admins can change the default list in Settings.</p>
+      <p style="font-size:12px;color:var(--dim);margin:12px 0 0">Items tagged <span class="auto">auto</span> tick themselves when the status changes, a contract/rider/W-9 is uploaded, or a payment date is entered. Admins can change the default list in Settings.</p>
     </div>
   </section>
 </div>
@@ -88,7 +99,7 @@ const id = Number(params.get('id')) || null;
 const fromId = Number(params.get('from')) || null; // "+ Artist for this festival"
 const $ = (s) => document.querySelector(s);
 let data = null;
-let dirty = { offer: false, advance: false };
+let dirty = { offer: false, advance: false, payments: false };
 
 renderSections($('#offerForm'), PF.OFFER_SECTIONS);
 $('#offerForm').addEventListener('input', () => setDirty('offer', true));
@@ -98,12 +109,13 @@ $('#offerForm').addEventListener('change', (e) => {
   if (n) toast(`Filled ${n} festival detail${n > 1 ? 's' : ''} from Settings`);
 });
 $('#advanceForm').addEventListener('input', () => setDirty('advance', true));
+$('#paymentsForm').addEventListener('input', () => setDirty('payments', true));
 
 function setDirty(which, v) {
   dirty[which] = v;
-  $(which === 'offer' ? '#offerMsg' : '#advanceMsg').innerHTML = v ? 'Unsaved changes<span class="dirty-dot"></span>' : '';
+  $('#' + which + 'Msg').innerHTML = v ? 'Unsaved changes<span class="dirty-dot"></span>' : '';
 }
-window.addEventListener('beforeunload', (e) => { if (dirty.offer || dirty.advance) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => { if (Object.values(dirty).some(Boolean)) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---- tabs ----
 $('#tabs').onclick = (e) => {
@@ -125,16 +137,26 @@ async function load() {
   $('#subtitle').textContent = [o.event_date && fmtDate(o.event_date), o.stage, o.venue_name,
     o.created_by_name && `Created by ${o.created_by_name}`].filter(Boolean).join('  ·  ');
   $('#tabs').hidden = false;
-  $('#advancePdf').href = `/api/offers/${id}/advance-sheet.pdf`;
-  if (!dirty.advance) renderSections($('#advanceForm'), PF.ADVANCE_SECTIONS, data.advance);
   renderDocs();
-  if (PROD) return; // production: advance sheet + riders only
+  if (hasTab('advance')) {
+    $('#advancePdf').href = `/api/offers/${id}/advance-sheet.pdf`;
+    if (!dirty.advance) renderSections($('#advanceForm'), PF.ADVANCE_SECTIONS, data.advance);
+  }
+  if (hasTab('payments')) renderPayments(o);
+  if (ROLE === 'production') return; // advance sheet + riders only
+  $('#offerPdf').hidden = false;
+  $('#offerPdf').href = `/api/offers/${id}/offer-sheet.pdf`;
+  if (ROLE === 'accounting') {
+    // Read-only offer: no internal notes, nothing editable.
+    renderSections($('#offerForm'), PF.OFFER_SECTIONS.map(s => ({ ...s, fields: s.fields.filter(f => !f.internal) })), o);
+    $('#offerForm').querySelectorAll('input, select, textarea').forEach(el => { el.disabled = true; });
+    $('#saveOffer').hidden = true;
+    return;
+  }
   $('#headActions').hidden = false;
   $('#delBtn').hidden = ME.role !== 'admin';
   $('#status').innerHTML = PF.STATUSES.map(s => `<option value="${s}"${s === o.status ? ' selected' : ''}>${STATUS_LABEL[s]}</option>`).join('');
   $('#saveOffer').textContent = 'Save offer';
-  $('#offerPdf').hidden = false;
-  $('#offerPdf').href = `/api/offers/${id}/offer-sheet.pdf`;
   if (!dirty.offer) renderSections($('#offerForm'), PF.OFFER_SECTIONS, o);
   renderChecklist();
 }
@@ -176,13 +198,13 @@ $('#status').onchange = async (e) => {
 };
 $('#dupBtn').onclick = () => {
   if (dirty.offer && !confirm('You have unsaved changes on this offer. Leave without saving?')) return;
-  dirty = { offer: false, advance: false };
+  dirty = { offer: false, advance: false, payments: false };
   location.href = '/offer.html?from=' + id;
 };
 $('#delBtn').onclick = async () => {
   if (!confirm('Delete this offer, its advance sheet, checklist and ALL uploaded files? This cannot be undone.')) return;
   await api('/offers/' + id, { method: 'DELETE' });
-  dirty = { offer: false, advance: false };
+  dirty = { offer: false, advance: false, payments: false };
   location.href = '/';
 };
 
@@ -197,17 +219,46 @@ $('#saveAdvance').onclick = async () => {
   finally { $('#saveAdvance').disabled = false; }
 };
 
+// ---- payments ----
+const hasTab = (t) => !!document.querySelector(`[data-panel="${t}"]`);
+
+function renderPayments(o) {
+  const deal = [
+    ['Guarantee', money(o.guarantee)], ['Deal type', o.deal_type], ['Deposit', money(o.deposit_amount)],
+    ['Deposit due', fmtDate(o.deposit_due)], ['Balance terms', o.balance_terms], ['Agency', o.agency],
+  ].filter(([, v]) => v);
+  $('#dealSummary').innerHTML = deal.length
+    ? deal.map(([l, v]) => `<div><label>${esc(l)}</label><div style="margin-bottom:14px">${esc(v)}</div></div>`).join('')
+    : '<div class="empty wide">No deal terms entered on the offer yet.</div>';
+  const done = ['deposit_paid_date', 'settlement_date', 'balance_paid_date'].filter(k => o[k]).length;
+  $('#payCount').textContent = `${done}/3`;
+  if (!dirty.payments) renderSections($('#paymentsForm'), PF.PAYMENT_SECTIONS, o);
+}
+
+$('#savePayments').onclick = async () => {
+  let body;
+  try { body = readSections($('#paymentsForm'), PF.PAYMENT_SECTIONS); } catch (e) { toast(e.message, true); return; }
+  $('#savePayments').disabled = true;
+  try {
+    await api(`/offers/${id}/payments`, { method: 'PUT', body });
+    setDirty('payments', false);
+    toast('Payments saved');
+    await load();
+  } catch (e) { toast(e.message, true); }
+  finally { $('#savePayments').disabled = false; }
+};
+
 // ---- documents ----
 function fillDocKinds() {
   $('#docKind').innerHTML = Object.entries(PF.DOC_KINDS)
-    .filter(([k]) => !PROD || PF.PRODUCTION_DOC_KINDS.includes(k))
+    .filter(([k]) => !ROLE || PF.ROLE_DOC_KINDS[ROLE].includes(k))
     .map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
 }
 
 function renderDocs() {
   const docs = data.documents;
   $('#docCount').textContent = docs.length;
-  if (!docs.length) { $('#docList').innerHTML = `<div class="empty">No ${PROD ? 'riders or stage plots' : 'contracts or riders'} uploaded yet.</div>`; return; }
+  if (!docs.length) { $('#docList').innerHTML = `<div class="empty">No ${DOCS_NOUN} uploaded yet.</div>`; return; }
   $('#docList').innerHTML = Object.entries(PF.DOC_KINDS).map(([kind, label]) => {
     const list = docs.filter(d => d.kind === kind);
     if (!list.length) return '';
@@ -218,7 +269,7 @@ function renderDocs() {
         <div class="btn-row">
           ${/^(application\/pdf|image\/(png|jpeg))$/.test(d.mime_type) ? `<a class="btn outline sm" target="_blank" href="/api/documents/${d.id}/download?view=1">View</a>` : ''}
           <a class="btn outline sm" href="/api/documents/${d.id}/download">Download</a>
-          ${PROD ? '' : `<button class="icon-btn" title="Delete" data-del-doc="${d.id}">&times;</button>`}
+          ${ROLE ? '' : `<button class="icon-btn" title="Delete" data-del-doc="${d.id}">&times;</button>`}
         </div>
       </div>`).join('')}</div>`;
   }).join('');
@@ -298,20 +349,33 @@ $('#clAdd').onsubmit = async (e) => {
 };
 
 // ---- boot ----
-let PROD = false;
+// Restricted roles get a subset of tabs (the server enforces the same limits).
+const ROLE_VIEW = {
+  production: { tabs: ['advance', 'docs'], start: 'advance', docsLabel: 'Riders & stage plots', noun: 'riders or stage plots' },
+  accounting: { tabs: ['payments', 'offer', 'docs'], start: 'payments', docsLabel: 'W-9', noun: 'W-9s' },
+};
+let ROLE = null;
+let DOCS_NOUN = 'contracts or riders';
 initNav(id ? 'offers' : 'new').then(async () => {
-  PROD = ME.role === 'production';
+  ROLE = PF.ROLE_DOC_KINDS[ME.role] ? ME.role : null;
   fillDocKinds();
-  if (PROD) {
+  if (ROLE) {
     if (!id) { location.replace('/'); return; }
-    // Technicians / production managers: no offer sheet, contracts or checklist.
-    document.querySelectorAll('#tabs [data-tab="offer"], #tabs [data-tab="checklist"]').forEach(b => b.remove());
-    document.querySelector('[data-panel="offer"]').remove();
-    document.querySelector('[data-panel="checklist"]').remove();
-    $('#tabs [data-tab="docs"]').firstChild.textContent = 'Riders & stage plots ';
+    const view = ROLE_VIEW[ROLE];
+    document.querySelectorAll('#tabs [data-tab]').forEach(b => {
+      if (!view.tabs.includes(b.dataset.tab)) {
+        b.remove();
+        document.querySelector(`[data-panel="${b.dataset.tab}"]`).remove();
+      }
+    });
+    // Put the role's tabs in its preferred order.
+    view.tabs.forEach(t => $('#tabs').appendChild($(`#tabs [data-tab="${t}"]`)));
+    $('#tabs [data-tab="docs"]').firstChild.textContent = view.docsLabel + ' ';
+    DOCS_NOUN = view.noun;
     try {
       await load();
-      showTab(location.hash.slice(1) === 'docs' ? 'docs' : 'advance');
+      const t = location.hash.slice(1);
+      showTab(view.tabs.includes(t) ? t : view.start);
     } catch (e) {
       $('#title').textContent = 'Show not found';
       $('#subtitle').innerHTML = '<a href="/">Back to shows</a>';
@@ -344,7 +408,7 @@ initNav(id ? 'offers' : 'new').then(async () => {
   try {
     await load();
     const t = location.hash.slice(1);
-    if (['offer', 'advance', 'docs', 'checklist'].includes(t)) showTab(t);
+    if (['offer', 'advance', 'docs', 'payments', 'checklist'].includes(t)) showTab(t);
   } catch (e) {
     $('#title').textContent = 'Offer not found';
     $('#subtitle').innerHTML = '<a href="/">Back to offers</a>';

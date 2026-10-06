@@ -61,7 +61,22 @@ async function load() {
   if (q) params.set('q', q);
   const rows = await api('/offers?' + params);
   document.getElementById('empty').hidden = rows.length > 0 || q || status || festival;
-  if (PROD) {
+  if (ROLE === 'accounting') {
+    const today = new Date().toISOString().slice(0, 10);
+    const paid = (d, label) => d ? `<span class="pill" title="${label}">✓ ${esc(fmtShort(d))}</span>` : '<span class="pill off">Open</span>';
+    document.getElementById('rows').innerHTML = rows.length ? rows.map(r => `<tr class="click" data-id="${r.id}">
+      <td>${esc(fmtDate(r.event_date)) || '<span style="color:var(--dim)">TBD</span>'}</td>
+      <td><strong>${esc(r.artist_name)}</strong><div style="font-size:12px;color:var(--dim)">${esc(r.festival_name || '')}</div></td>
+      <td class="hide-sm">${esc(money(r.guarantee))}</td>
+      <td>${r.deposit_paid_date ? paid(r.deposit_paid_date, 'Deposit paid')
+        : r.deposit_amount ? `<span class="pill ${r.deposit_due && r.deposit_due < today ? 'late' : 'off'}">${esc(money(r.deposit_amount))}${r.deposit_due ? ' due ' + esc(fmtShort(r.deposit_due)) : ''}</span>` : '<span class="pill off">—</span>'}</td>
+      <td class="hide-sm">${paid(r.settlement_date, 'Settled')}</td>
+      <td>${paid(r.balance_paid_date, 'Balance paid')}</td>
+      <td class="hide-sm"><span class="pill ${r.w9_count ? '' : 'off'}">${r.w9_count ? 'On file' : 'Missing'}</span></td>
+    </tr>`).join('') : `<tr><td colspan="7" class="empty">${q || festival ? 'No shows match.' : 'No accepted offers yet.'}</td></tr>`;
+    return;
+  }
+  if (ROLE === 'production') {
     document.getElementById('rows').innerHTML = rows.length ? rows.map(r => `<tr class="click" data-id="${r.id}">
       <td>${esc(fmtDate(r.event_date)) || '<span style="color:var(--dim)">TBD</span>'}</td>
       <td><strong>${esc(r.artist_name)}</strong>${slotLine(r) ? `<div style="font-size:12px;color:var(--dim)">${esc(slotLine(r))}</div>` : ''}</td>
@@ -85,7 +100,7 @@ async function load() {
 }
 document.getElementById('rows').onclick = (e) => {
   const tr = e.target.closest('tr[data-id]');
-  if (tr) location.href = '/offer.html?id=' + tr.dataset.id + (PROD ? '#advance' : '');
+  if (tr) location.href = '/offer.html?id=' + tr.dataset.id;
 };
 
 function slotLine(r) {
@@ -105,10 +120,23 @@ document.getElementById('festival').onchange = (e) => {
   load();
 };
 
-let PROD = false;
+function fmtShort(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+let ROLE = null;
 initNav('offers').then(async () => {
-  PROD = ME.role === 'production';
-  if (PROD) {
+  ROLE = PF.ROLE_DOC_KINDS[ME.role] ? ME.role : null;
+  if (ROLE === 'accounting') {
+    status = '';
+    document.getElementById('pageTitle').textContent = 'Accounts';
+    document.getElementById('pageSub').textContent = 'Accepted offers: deposits, settlements, balances and W-9s.';
+    document.getElementById('newBtn').hidden = true;
+    document.getElementById('filters').hidden = true;
+    document.getElementById('q').placeholder = 'Search artist, festival, agency…';
+    document.getElementById('headRow').innerHTML = '<th>Date</th><th>Artist</th><th class="hide-sm">Guarantee</th><th>Deposit</th><th class="hide-sm">Settlement</th><th>Balance</th><th class="hide-sm">W-9</th>';
+  } else if (ROLE === 'production') {
     // Technicians / production managers: confirmed shows, riders & advance only.
     status = '';
     document.getElementById('pageTitle').textContent = 'Shows';

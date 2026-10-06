@@ -146,25 +146,49 @@
 
   const STATUSES = ['draft', 'sent', 'accepted', 'declined', 'cancelled', 'completed'];
 
-  // Production role (technicians / production managers): sees only these
-  // statuses, these document kinds, and the advance sheet.
-  const ROLES = { admin: 'Admin', staff: 'Staff', production: 'Production' };
-  const PRODUCTION_STATUSES = ['accepted', 'completed'];
-  const PRODUCTION_DOC_KINDS = ['rider_technical', 'rider_hospitality', 'stage_plot'];
+  // Payments tab: entered by accounting (or admin/staff). auto ticks the
+  // matching checklist item when a date is entered.
+  const PAYMENT_SECTIONS = [
+    { title: 'Deposit', fields: [
+      { key: 'deposit_paid_date', label: 'Deposit paid on', type: 'date', auto: 'pay_deposit' },
+      { key: 'deposit_confirmation', label: 'Deposit confirmation #' },
+    ]},
+    { title: 'Settlement', fields: [
+      { key: 'settlement_date', label: 'Settlement completed on', type: 'date', auto: 'pay_settlement' },
+      { key: 'settlement_amount', label: 'Final settlement amount', type: 'money' },
+      { key: 'settlement_notes', label: 'Settlement notes', type: 'textarea', wide: true },
+    ]},
+    { title: 'Balance', fields: [
+      { key: 'balance_paid_date', label: 'Balance paid on', type: 'date', auto: 'pay_balance' },
+      { key: 'balance_confirmation', label: 'Balance confirmation #' },
+    ]},
+  ];
+
+  // Restricted roles see only accepted/completed shows and only the listed
+  // document kinds. Production: advance sheet + riders. Accounting: the offer
+  // (read-only), W-9s and the Payments tab.
+  const ROLES = { admin: 'Admin', staff: 'Staff', production: 'Production', accounting: 'Accounting' };
+  const RESTRICTED_STATUSES = ['accepted', 'completed'];
+  const ROLE_DOC_KINDS = {
+    production: ['rider_technical', 'rider_hospitality', 'stage_plot'],
+    accounting: ['w9'],
+  };
 
   const DOC_KINDS = {
     contract: 'Contract',
     rider_technical: 'Technical rider',
     rider_hospitality: 'Hospitality rider',
     stage_plot: 'Stage plot / input list',
+    w9: 'W-9',
     other: 'Other',
   };
 
   const flat = (sections) => sections.flatMap(s => s.fields);
   const api = {
-    OFFER_SECTIONS, ADVANCE_SECTIONS, STATUSES, DOC_KINDS, ROLES, PRODUCTION_STATUSES, PRODUCTION_DOC_KINDS,
+    OFFER_SECTIONS, ADVANCE_SECTIONS, PAYMENT_SECTIONS, STATUSES, DOC_KINDS, ROLES, RESTRICTED_STATUSES, ROLE_DOC_KINDS,
     OFFER_FIELDS: flat(OFFER_SECTIONS),
     ADVANCE_FIELDS: flat(ADVANCE_SECTIONS),
+    PAYMENT_FIELDS: flat(PAYMENT_SECTIONS),
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

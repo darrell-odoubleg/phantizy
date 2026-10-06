@@ -8,7 +8,7 @@ const express = require('express');
 const multer = require('multer');
 const db = require('../db/init');
 const { requireAdmin } = require('../server/auth');
-const { OFFER_FIELDS, ADVANCE_FIELDS, STATUSES, DOC_KINDS, PRODUCTION_STATUSES, PRODUCTION_DOC_KINDS } = require('../public/fields');
+const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS } = require('../public/fields');
 const { offerSheetPdf, advanceSheetPdf } = require('../server/pdf');
 
 const router = express.Router();
@@ -71,18 +71,25 @@ function getOffer(id) {
   return db.prepare('SELECT * FROM offers WHERE id = ?').get(id);
 }
 
-// Production users: no deal terms, agent or money — just what's needed to
-// advance the show.
-const PRODUCTION_OFFER_KEYS = ['id', 'status', 'artist_name', 'festival_name', 'festival_dates', 'festival_gates',
-  'festival_presenter', 'festival_contact', 'venue_name', 'venue_address', 'venue_city', 'venue_state', 'ages',
-  'event_date', 'stage', 'billing', 'show_time', 'set_length', 'changeover', 'production_provided',
-  'credentials', 'guest_list_offer', 'artist_parking', 'ground_transport'];
-const isProduction = (req) => req.user && req.user.role === 'production';
+// Restricted roles (see fields.js ROLE_DOC_KINDS) see accepted/completed
+// shows only, and only these offer fields.
+const ROLE_OFFER_KEYS = {
+  // Production: no deal terms, agent or money — just what's needed to advance the show.
+  production: ['id', 'status', 'artist_name', 'festival_name', 'festival_dates', 'festival_gates',
+    'festival_presenter', 'festival_contact', 'venue_name', 'venue_address', 'venue_city', 'venue_state', 'ages',
+    'event_date', 'stage', 'billing', 'show_time', 'set_length', 'changeover', 'production_provided',
+    'credentials', 'guest_list_offer', 'artist_parking', 'ground_transport'],
+  // Accounting: the whole offer (minus internal notes) plus payments.
+  accounting: ['id', 'status', 'created_by_name',
+    ...OFFER_FIELDS.filter(f => !f.internal).map(f => f.key), ...PAYMENT_FIELDS.map(f => f.key)],
+};
+const restrictedRole = (req) => (req.user && ROLE_DOC_KINDS[req.user.role] ? req.user.role : null);
 const sqlList = (arr) => arr.map(s => `'${s}'`).join(',');
+const only = (obj, keys) => Object.fromEntries(keys.map(k => [k, obj[k]]));
 
 function loadOffer(req, res, next) {
   const offer = getOffer(Number(req.params.id));
-  if (!offer || (isProduction(req) && !PRODUCTION_STATUSES.includes(offer.status))) {
+  if (!offer || (restrictedRole(req) && !RESTRICTED_STATUSES.includes(offer.status))) {
     return res.status(404).json({ error: 'Offer not found' });
   }
   req.offer = offer;
@@ -96,7 +103,7 @@ router.get('/offers', (req, res) => {
   const where = [];
   const params = {};
   if (status && STATUSES.includes(status)) { where.push('o.status = @status'); params.status = status; }
-  if (isProduction(req)) where.push(`o.status IN (${sqlList(PRODUCTION_STATUSES)})`);
+  if (restrictedRole(req)) where.push(`o.status IN (${sqlList(RESTRICTED_STATUSES)})`);
   if (festival) { where.push('o.festival_name = @festival'); params.festival = festival; }
   if (q) {
     where.push("(o.artist_name LIKE @q OR o.festival_name LIKE @q OR o.venue_name LIKE @q OR o.stage LIKE @q OR o.venue_city LIKE @q OR o.agency LIKE @q)");
@@ -108,22 +115,26 @@ router.get('/offers', (req, res) => {
            (SELECT COUNT(*) FROM checklist_items c WHERE c.offer_id = o.id) AS checklist_total,
            (SELECT COUNT(*) FROM checklist_items c WHERE c.offer_id = o.id AND c.done = 1) AS checklist_done,
            (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind = 'contract') AS contract_count,
-           (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind IN ('rider_technical','rider_hospitality','stage_plot')) AS rider_count
+           (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind IN ('rider_technical','rider_hospitality','stage_plot')) AS rider_count,
+           (SELECT COUNT(*) FROM documents d WHERE d.offer_id = o.id AND d.kind = 'w9') AS w9_count,
+           o.deposit_amount, o.deposit_due, o.deposit_paid_date, o.settlement_date, o.balance_paid_date
     FROM offers o
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY (o.event_date IS NULL), o.event_date, o.show_time, o.id DESC`).all(params);
-  if (isProduction(req)) {
-    const keep = ['id', 'status', 'artist_name', 'festival_name', 'festival_dates', 'stage', 'billing', 'show_time',
-      'event_date', 'venue_name', 'venue_city', 'venue_state', 'rider_count'];
-    return res.json(rows.map(r => Object.fromEntries(keep.map(k => [k, r[k]]))));
+  const base = ['id', 'status', 'artist_name', 'festival_name', 'festival_dates', 'stage', 'billing', 'show_time',
+    'event_date', 'venue_name', 'venue_city', 'venue_state'];
+  if (restrictedRole(req) === 'production') return res.json(rows.map(r => only(r, [...base, 'rider_count'])));
+  if (restrictedRole(req) === 'accounting') {
+    return res.json(rows.map(r => only(r, [...base, 'guarantee', 'deposit_amount', 'deposit_due', 'deposit_paid_date',
+      'settlement_date', 'balance_paid_date', 'w9_count'])));
   }
   res.json(rows);
 });
 
 router.get('/festivals', (req, res) => {
-  const only = isProduction(req) ? `AND status IN (${sqlList(PRODUCTION_STATUSES)})` : '';
+  const limit = restrictedRole(req) ? `AND status IN (${sqlList(RESTRICTED_STATUSES)})` : '';
   res.json(db.prepare(`SELECT festival_name AS name, COUNT(*) AS offers, MIN(event_date) AS first_date
-    FROM offers WHERE festival_name IS NOT NULL ${only} GROUP BY festival_name ORDER BY (first_date IS NULL), first_date, name`).all());
+    FROM offers WHERE festival_name IS NOT NULL ${limit} GROUP BY festival_name ORDER BY (first_date IS NULL), first_date, name`).all());
 });
 
 // Festival must come from the Settings list (an offer may keep a festival
@@ -161,12 +172,14 @@ router.post('/offers', (req, res) => {
 router.get('/offers/:id', loadOffer, (req, res) => {
   const id = req.offer.id;
   const docs = db.prepare('SELECT id, kind, label, original_name, mime_type, size, uploaded_by_name, uploaded_at FROM documents WHERE offer_id = ? ORDER BY uploaded_at DESC').all(id);
-  if (isProduction(req)) {
-    return res.json({
-      offer: Object.fromEntries(PRODUCTION_OFFER_KEYS.map(k => [k, req.offer[k]])),
-      advance: db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(id) || {},
-      documents: docs.filter(d => PRODUCTION_DOC_KINDS.includes(d.kind)),
-    });
+  const role = restrictedRole(req);
+  if (role) {
+    const out = {
+      offer: only(req.offer, ROLE_OFFER_KEYS[role]),
+      documents: docs.filter(d => ROLE_DOC_KINDS[role].includes(d.kind)),
+    };
+    if (role === 'production') out.advance = db.prepare('SELECT * FROM advances WHERE offer_id = ?').get(id) || {};
+    return res.json(out);
   }
   res.json({
     offer: req.offer,
@@ -213,6 +226,16 @@ router.put('/offers/:id/advance', loadOffer, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- payments (accounting) ----
+
+router.put('/offers/:id/payments', loadOffer, (req, res) => {
+  const values = pick(req.body || {}, PAYMENT_FIELDS);
+  updateRow('offers', 'id', req.offer.id, values);
+  // A newly entered date ticks its checklist item (clearing it doesn't untick).
+  for (const f of PAYMENT_FIELDS) if (f.auto && values[f.key]) autoCheck(req.offer.id, f.auto, req.user.name);
+  res.json({ ok: true });
+});
+
 // ---- PDFs ----
 
 function sendPdf(res, filename, build) {
@@ -239,9 +262,10 @@ router.post('/offers/:id/documents', loadOffer, upload.array('files', 10), (req,
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: 'Choose a file to upload' });
   const kind = DOC_KINDS[req.body.kind] ? req.body.kind : 'other';
-  if (isProduction(req) && !PRODUCTION_DOC_KINDS.includes(kind)) {
+  const role = restrictedRole(req);
+  if (role && !ROLE_DOC_KINDS[role].includes(kind)) {
     files.forEach(f => fs.rmSync(f.path, { force: true }));
-    return res.status(403).json({ error: 'Production accounts can upload riders and stage plots only' });
+    return res.status(403).json({ error: `Your account can upload ${ROLE_DOC_KINDS[role].map(k => DOC_KINDS[k]).join(', ')} only` });
   }
   const label = req.body.label ? String(req.body.label).slice(0, 200) : null;
   const ins = db.prepare(`INSERT INTO documents (offer_id, kind, label, original_name, stored_name, mime_type, size, uploaded_by_name)
@@ -249,15 +273,17 @@ router.post('/offers/:id/documents', loadOffer, upload.array('files', 10), (req,
   db.transaction(() => files.forEach(f => ins.run(req.offer.id, kind, label, f.originalname, f.filename, f.mimetype, f.size, req.user.name)))();
   if (kind === 'contract') autoCheck(req.offer.id, 'doc_contract', req.user.name);
   if (kind.startsWith('rider') || kind === 'stage_plot') autoCheck(req.offer.id, 'doc_rider', req.user.name);
+  if (kind === 'w9') autoCheck(req.offer.id, 'doc_w9', req.user.name);
   res.json({ ok: true, count: files.length });
 });
 
 function loadDoc(req, res, next) {
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(Number(req.params.docId));
   if (!doc) return res.status(404).json({ error: 'File not found' });
-  if (isProduction(req)) {
+  const role = restrictedRole(req);
+  if (role) {
     const offer = getOffer(doc.offer_id);
-    if (!PRODUCTION_DOC_KINDS.includes(doc.kind) || !offer || !PRODUCTION_STATUSES.includes(offer.status)) {
+    if (!ROLE_DOC_KINDS[role].includes(doc.kind) || !offer || !RESTRICTED_STATUSES.includes(offer.status)) {
       return res.status(404).json({ error: 'File not found' });
     }
   }

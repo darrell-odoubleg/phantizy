@@ -7,7 +7,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const Database = require('better-sqlite3');
-const { OFFER_FIELDS, ADVANCE_FIELDS } = require('../public/fields');
+const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS } = require('../public/fields');
 
 const APP_ROOT = path.join(__dirname, '..');
 const DB_PATH = process.env.DB_PATH
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('admin','staff','production')),
+  role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('admin','staff','production','accounting')),
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_offer ON documents(offer_id);
 
 -- auto_key ties an item to an event that checks it off automatically:
--- status_sent, status_accepted, doc_contract, doc_rider, status_completed.
+-- status_sent, status_accepted, doc_contract, doc_rider, doc_w9,
+-- pay_deposit, pay_settlement, pay_balance (status_completed: older rows).
 -- Festivals offered in the Festival dropdown (managed in Settings).
 CREATE TABLE IF NOT EXISTS festivals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,10 +94,10 @@ CREATE TABLE IF NOT EXISTS checklist_items (
 CREATE INDEX IF NOT EXISTS idx_checklist_offer ON checklist_items(offer_id);
 `);
 
-// Databases created before the production role have the old CHECK on
+// Databases created before the production/accounting roles have an old CHECK on
 // users.role; SQLite can't alter a CHECK, so rebuild the table once.
 const usersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql;
-if (!usersSql.includes("'production'")) {
+if (!usersSql.includes("'accounting'")) {
   db.pragma('foreign_keys = OFF');
   db.transaction(() => {
     db.exec(`CREATE TABLE users_new (
@@ -104,7 +105,7 @@ if (!usersSql.includes("'production'")) {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE COLLATE NOCASE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('admin','staff','production')),
+      role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('admin','staff','production','accounting')),
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -123,6 +124,7 @@ function addMissingColumns(table, fields) {
   }
 }
 addMissingColumns('offers', OFFER_FIELDS);
+addMissingColumns('offers', PAYMENT_FIELDS);
 // Festival-wide defaults (JSON of festivalWide offer fields) used to fill new offers.
 addMissingColumns('festivals', [{ key: 'details' }]);
 addMissingColumns('advances', ADVANCE_FIELDS);
@@ -132,8 +134,8 @@ const DEFAULT_CHECKLIST = [
   ['Offer accepted', 'status_accepted'],
   ['Contract received from agency', null],
   ['Signed contract uploaded', 'doc_contract'],
-  ['Deposit paid', null],
-  ['W-9 received', null],
+  ['Deposit paid', 'pay_deposit'],
+  ['W-9 received', 'doc_w9'],
   ['Certificate of insurance received', null],
   ['Riders received', 'doc_rider'],
   ['Riders reviewed / production approved', null],
@@ -146,8 +148,8 @@ const DEFAULT_CHECKLIST = [
   ['Set times sent to artist', null],
   ['Advance call completed', null],
   ['Advance sheet sent to tour manager', null],
-  ['Settlement completed', null],
-  ['Balance paid', 'status_completed'],
+  ['Settlement completed', 'pay_settlement'],
+  ['Balance paid', 'pay_balance'],
 ];
 if (db.prepare('SELECT COUNT(*) AS n FROM checklist_template').get().n === 0) {
   const ins = db.prepare('INSERT INTO checklist_template (label, auto_key, position) VALUES (?, ?, ?)');
@@ -156,6 +158,17 @@ if (db.prepare('SELECT COUNT(*) AS n FROM checklist_template').get().n === 0) {
 
 if (db.prepare('SELECT COUNT(*) AS n FROM festivals').get().n === 0) {
   db.prepare('INSERT INTO festivals (name) VALUES (?)').run('Rock the Locks Music Festival');
+}
+
+// Link checklist items created before W-9 / payment tracking existed to
+// their new auto ticks (matched by the default label; renamed items are left alone).
+const AUTO_LINKS = [
+  ['W-9 received', 'doc_w9'], ['Deposit paid', 'pay_deposit'],
+  ['Settlement completed', 'pay_settlement'], ['Balance paid', 'pay_balance'],
+];
+for (const table of ['checklist_template', 'checklist_items']) {
+  const upd = db.prepare(`UPDATE ${table} SET auto_key = ? WHERE label = ? AND (auto_key IS NULL OR auto_key = 'status_completed')`);
+  for (const [label, key] of AUTO_LINKS) upd.run(key, label);
 }
 
 module.exports = db;
