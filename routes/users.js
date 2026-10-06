@@ -10,6 +10,7 @@ const path = require('path');
 const { OFFER_SECTIONS, ROLES, WELCOME_FILE_KINDS } = require('../public/fields');
 const { makeUpload, sendStoredFile, UPLOAD_DIR } = require('../server/upload');
 const { runOfShowPdf } = require('../server/pdf');
+const { runOfShowRows } = require('../server/ros');
 const festivalUpload = makeUpload(req => path.join('festivals', String(Number(req.params.id))));
 const cleanRole = (r) => (ROLES[r] ? r : 'staff');
 
@@ -193,8 +194,17 @@ router.get('/festival-options/:id/run-of-show', requireAdmin, (req, res) => {
   res.json({
     files: db.prepare(`SELECT id, stage, day, original_name, mime_type, size, uploaded_by_name, uploaded_at
       FROM festival_files WHERE festival_id = ? AND kind = 'run_of_show'`).all(fid),
-    tables: db.prepare(`SELECT id, stage, day, rows, updated_by_name, updated_at FROM festival_ros WHERE festival_id = ?`).all(fid)
-      .map(t => ({ ...t, rows: parseList(t.rows) })),
+    // Every stage × day slot, with artist rows filled from accepted offers.
+    tables: (() => {
+      const fest = db.prepare('SELECT * FROM festivals WHERE id = ?').get(fid);
+      if (!fest) return [];
+      const meta = db.prepare('SELECT stage, day, updated_by_name, updated_at FROM festival_ros WHERE festival_id = ?').all(fid);
+      return parseList(fest.stages).flatMap(stage => parseList(fest.days).map(day => {
+        const { rows, pending } = runOfShowRows(fest.name, stage, day);
+        const m = meta.find(x => x.stage === stage && x.day === day) || {};
+        return { stage, day, rows, pending, updated_by_name: m.updated_by_name, updated_at: m.updated_at };
+      }));
+    })(),
   });
 });
 
@@ -211,22 +221,27 @@ function rosSlot(req, res) {
 router.put('/festival-options/:id/run-of-show-table', requireAdmin, (req, res) => {
   const slot = rosSlot(req, res); if (!slot) return;
   const str = (v, max) => String(v ?? '').trim().slice(0, max);
+  const time = (v) => (/^\d{1,2}:\d{2}$/.test(v || '') ? v : '');
+  // Artist rows (offer_id) only keep their Stage Setup; their name and times
+  // always come from the offer / advance sheet (server/ros.js).
   const rows = (Array.isArray(req.body.rows) ? req.body.rows : []).slice(0, 200)
-    .map(r => ({ item: str(r.item, 300), setup: str(r.setup, 300), time: /^\d{1,2}:\d{2}$/.test(r.time || '') ? r.time : str(r.time, 20), duration: str(r.duration, 60) }))
-    .filter(r => r.item || r.setup || r.time || r.duration);
+    .map(r => (r.offer_id
+      ? { offer_id: Number(r.offer_id), setup: str(r.setup, 300) }
+      : { item: str(r.item, 300), setup: str(r.setup, 300), time: time(r.time), end: time(r.end), duration: str(r.duration, 60) }))
+    .filter(r => r.offer_id || r.item || r.setup || r.time || r.duration);
   db.prepare(`INSERT INTO festival_ros (festival_id, stage, day, rows, updated_by_name, updated_at)
               VALUES (?, ?, ?, ?, ?, datetime('now'))
               ON CONFLICT (festival_id, stage, day) DO UPDATE SET rows = excluded.rows, updated_by_name = excluded.updated_by_name, updated_at = excluded.updated_at`)
     .run(slot.fest.id, slot.stage, slot.day, JSON.stringify(rows), req.user.name);
-  res.json({ ok: true, count: rows.length });
+  res.json({ ok: true, count: runOfShowRows(slot.fest.name, slot.stage, slot.day).rows.length });
 });
 
 router.get('/festival-options/:id/run-of-show.pdf', requireAdmin, (req, res) => {
   const slot = rosSlot(req, res); if (!slot) return;
-  const t = db.prepare('SELECT rows FROM festival_ros WHERE festival_id = ? AND stage = ? AND day = ?').get(slot.fest.id, slot.stage, slot.day);
+  const { rows } = runOfShowRows(slot.fest.name, slot.stage, slot.day);
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="Run of show - ${slot.stage} - ${slot.day}.pdf"`.replace(/[^\w.\- =";]+/g, ''));
-  runOfShowPdf({ festival: slot.fest.name, stage: slot.stage, day: slot.day, rows: t ? parseList(t.rows) : [] }, res);
+  runOfShowPdf({ festival: slot.fest.name, stage: slot.stage, day: slot.day, rows }, res);
 });
 
 // One file per stage + day; uploading again replaces it.

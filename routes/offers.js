@@ -10,6 +10,7 @@ const { requireAdmin } = require('../server/auth');
 const { OFFER_FIELDS, ADVANCE_FIELDS, PAYMENT_FIELDS, STATUSES, DOC_KINDS, RESTRICTED_STATUSES, ROLE_DOC_KINDS, WELCOME_FILE_KINDS } = require('../public/fields');
 const { offerSheetPdf, advanceSheetPdf, welcomeLetterPdf, runOfShowPdf, fillTemplate, welcomeVars } = require('../server/pdf');
 const mailer = require('../server/mailer');
+const { runOfShowRows } = require('../server/ros');
 const pdfMerge = require('../server/pdfMerge');
 const { PassThrough } = require('stream');
 
@@ -258,17 +259,19 @@ function welcomeAttachments(offer) {
     name: f.original_name, size: f.size, mime: f.mime_type,
     path: path.join(UPLOAD_DIR, 'festivals', String(f.festival_id), path.basename(f.stored_name)) });
   // The run of show for this act's stage and performance date goes first:
-  // the table built in the site if it has rows, otherwise an uploaded file.
+  // the built table (artists auto-filled from the advance sheets) if it has
+  // rows, otherwise an uploaded file.
   const norm = (s) => String(s || '').trim().toLowerCase();
-  const table = db.prepare(`SELECT r.*, f.name AS festival FROM festival_ros r JOIN festivals f ON f.id = r.festival_id
-    WHERE f.name = ? AND r.day = ?`).all(offer.festival_name, offer.event_date || '')
-    .find(r => norm(r.stage) === norm(offer.stage) && r.rows !== '[]');
+  const fest = db.prepare('SELECT stages FROM festivals WHERE name = ?').get(offer.festival_name);
+  let stages = [];
+  try { stages = JSON.parse(fest && fest.stages) || []; } catch {}
+  const stage = stages.find(s => norm(s) === norm(offer.stage));
+  const { rows } = stage && offer.event_date ? runOfShowRows(offer.festival_name, stage, offer.event_date) : { rows: [] };
   let ros;
-  if (table) {
-    const rows = JSON.parse(table.rows);
-    ros = [{ source: 'ros', id: table.id, kind: 'run_of_show', label: 'Run of show', name: `Run of show: ${table.stage}, ${rows.length} items`,
+  if (rows.length) {
+    ros = [{ source: 'ros', id: 'slot', kind: 'run_of_show', label: 'Run of show', name: `Run of show: ${stage}, ${rows.length} items`,
       size: null, mime: 'application/pdf',
-      build: (out) => runOfShowPdf({ festival: table.festival, stage: table.stage, day: table.day, rows, highlight: offer.artist_name }, out) }];
+      build: (out) => runOfShowPdf({ festival: offer.festival_name, stage, day: offer.event_date, rows, highlight: offer.artist_name, highlightOfferId: offer.id }, out) }];
   } else {
     ros = all.filter(f => f.kind === 'run_of_show' && norm(f.stage) === norm(offer.stage) && f.day === offer.event_date)
       .map(f => asAtt(f, 'Run of show'));

@@ -307,12 +307,12 @@ function welcomeLetterPdf(offer, advance, welcome, out, contents = [], separate 
 // Run of show table for one stage on one day. highlight: text (the act's
 // name) whose rows are shaded so the act can find its slot.
 const ROS_COLS = [
-  { key: 'item', label: 'Item', w: 0.34 },
-  { key: 'setup', label: 'Stage Setup', w: 0.30 },
-  { key: 'time', label: 'Performance Time', w: 0.21, type: 'time' },
+  { key: 'item', label: 'Item', w: 0.29 },
+  { key: 'setup', label: 'Stage Setup', w: 0.28 },
+  { key: 'time', label: 'Performance Time', w: 0.28, type: 'time' },
   { key: 'duration', label: 'Duration', w: 0.15 },
 ];
-function runOfShowPdf({ festival, stage, day, rows, highlight }, out) {
+function runOfShowPdf({ festival, stage, day, rows, highlight, highlightOfferId }, out) {
   const doc = newDoc(out);
   const c = COMPANY();
   const left = doc.page.margins.left;
@@ -342,11 +342,14 @@ function runOfShowPdf({ festival, stage, day, rows, highlight }, out) {
   headerRow();
   const hl = String(highlight || '').trim().toLowerCase();
   (rows || []).forEach((r, n) => {
-    const cells = ROS_COLS.map(col => col.type === 'time' ? fmtTime(r[col.key]) : String(r[col.key] || ''));
+    const cells = ROS_COLS.map(col => col.type === 'time'
+      ? [fmtTime(r.time), fmtTime(r.end)].filter(Boolean).join(' – ')
+      : String(r[col.key] || ''));
     doc.font('Helvetica').fontSize(10);
     const h = Math.max(...cells.map((t, i) => doc.heightOfString(t || ' ', { width: ROS_COLS[i].w * width - pad * 2 }))) + pad * 2;
     if (y + h > bottom()) { doc.addPage(); y = doc.page.margins.top; headerRow(); }
-    const mine = hl && String(r.item || '').toLowerCase().includes(hl);
+    // The act's own row (by offer), or manual rows that mention the act.
+    const mine = (highlightOfferId && r.offer_id === highlightOfferId) || (hl && !r.offer_id && String(r.item || '').toLowerCase().includes(hl));
     if (mine) doc.rect(left, y, width, h).fill('#EEEAF4');
     else if (n % 2) doc.rect(left, y, width, h).fill('#F7F6F9');
     cells.forEach((t, i) => doc.font(mine ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor(INK)

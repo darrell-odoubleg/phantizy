@@ -30,7 +30,7 @@
   </div>
   <div class="card">
     <h2>Run of show (one per stage, per day)</h2>
-    <p style="margin:-6px 0 12px;color:var(--dim);font-size:13px">Build each run of show here (Item, Stage Setup, Performance Time, Duration), or upload a PDF/PNG/JPEG instead. If a slot has both, the table you built is what gets sent. In each act's copy, rows whose Item contains the act's name are highlighted.</p>
+    <p style="margin:-6px 0 12px;color:var(--dim);font-size:13px">Each run of show (Item, Stage Setup, Performance Time, Duration) fills in automatically from the accepted offers on that stage and day and their advance sheets. Edit to add stage setups and other rows. You can also upload a PDF/PNG/JPEG instead, but if the table has rows, the table is what gets sent. Each act's copy highlights its own row.</p>
     <div class="table-wrap"><table class="ros-grid" id="rosGrid"></table></div>
     <input type="file" id="rosFile" hidden accept=".pdf,.png,.jpg,.jpeg">
   </div>
@@ -38,14 +38,14 @@
   <dialog class="modal wide" id="rosDlg">
     <div class="mbody">
       <h2 id="rosTitle">Run of show</h2>
-      <p class="subtitle" style="margin-bottom:12px">One row per item. Put the act's name in Item so it's highlighted in that act's copy.</p>
+      <p class="subtitle" style="margin-bottom:12px">Acts booked on this stage and day (accepted offers) fill in automatically: Performance Time is Set time – Set ends from each act's advance sheet. Add their Stage Setup, plus any other rows (gates, changeovers, curfew). Rows are ordered by start time.</p>
+      <div class="note-box warn" id="rosPending" hidden></div>
       <div class="table-wrap"><table class="ros-edit">
-        <thead><tr><th>Item</th><th>Stage Setup</th><th>Performance Time</th><th>Duration</th><th></th></tr></thead>
+        <thead><tr><th>Item</th><th>Stage Setup</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr></thead>
         <tbody id="rosRows"></tbody>
       </table></div>
       <div class="btn-row" style="margin-top:10px">
         <button type="button" class="btn outline sm" id="rosAddRow">+ Add row</button>
-        <button type="button" class="btn outline sm" id="rosSort" title="Order rows by performance time (rows without a time stay at the end)">Sort by time</button>
       </div>
     </div>
     <div class="mfoot">
@@ -254,19 +254,39 @@ let rosTarget = null;
 // ---- run of show table editor ----
 let rosEdit = null; // { stage, day, rows }
 let rosDirty = false;
+const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+function durText(a, b) {
+  const x = toMin(a), y = toMin(b); if (x === null || y === null) return '';
+  let d = y - x; if (d <= 0) d += 1440;
+  return [Math.floor(d / 60) && `${Math.floor(d / 60)} hr`, d % 60 && `${d % 60} min`].filter(Boolean).join(' ');
+}
+const t5 = (t) => (/^\d{1,2}:\d{2}$/.test(t || '') ? t.padStart(5, '0') : '');
 function renderRosRows() {
-  $('#rosRows').innerHTML = rosEdit.rows.map((r, i) => `<tr data-i="${i}">
-      <td><input type="text" data-k="item" value="${esc(r.item)}" placeholder="e.g. Alice Cooper"></td>
+  $('#rosRows').innerHTML = rosEdit.rows.map((r, i) => r.offer_id ? `<tr data-i="${i}" class="artist-row">
+      <td><strong>${esc(r.item)}</strong> <span class="pill" title="From the offer and its advance sheet">from advance</span></td>
+      <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="e.g. Full production"></td>
+      <td>${esc(fmtT(r.time)) || '<span class="meta">set time?</span>'}</td>
+      <td>${esc(fmtT(r.end)) || '<span class="meta">set ends?</span>'}</td>
+      <td>${esc(r.duration)}</td>
+      <td><a class="meta" href="/offer.html?id=${r.offer_id}#advance" target="_blank" title="Change times on the advance sheet">edit times</a></td>
+    </tr>` : `<tr data-i="${i}">
+      <td><input type="text" data-k="item" value="${esc(r.item)}" placeholder="e.g. Gates open"></td>
       <td><input type="text" data-k="setup" value="${esc(r.setup)}" placeholder="e.g. Changeover / line check"></td>
-      <td><input type="time" data-k="time" value="${esc(/^\d{1,2}:\d{2}$/.test(r.time) ? r.time.padStart(5, '0') : '')}"></td>
-      <td><input type="text" data-k="duration" value="${esc(r.duration)}" placeholder="e.g. 75 min"></td>
-      <td class="nowrap"><button type="button" class="icon-btn" data-mv="-1" title="Move up">▲</button><button type="button" class="icon-btn" data-mv="1" title="Move down">▼</button><button type="button" class="icon-btn" data-rm title="Remove row">&times;</button></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="empty">No rows yet. Click + Add row.</td></tr>';
+      <td><input type="time" data-k="time" value="${esc(t5(r.time))}"></td>
+      <td><input type="time" data-k="end" value="${esc(t5(r.end))}"></td>
+      <td><input type="text" data-k="duration" value="${esc(r.duration)}" placeholder="auto"></td>
+      <td class="nowrap"><button type="button" class="icon-btn" data-rm title="Remove row">&times;</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No accepted acts on this stage and day yet. Add rows with + Add row.</td></tr>';
+}
+function fmtT(t) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); if (!m) return '';
+  const h = Number(m[1]); return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
 function openRos(stage, day) {
   const t = ROS_TABLES.find(x => x.stage === stage && x.day === day);
   rosEdit = { stage, day, rows: t ? t.rows.map(r => ({ ...r })) : [] };
-  if (!rosEdit.rows.length) rosEdit.rows.push({ item: '', setup: '', time: '', duration: '' });
+  $('#rosPending').hidden = !(t && t.pending);
+  if (t && t.pending) $('#rosPending').textContent = `${t.pending} offer${t.pending > 1 ? 's' : ''} on this stage and day ${t.pending > 1 ? "aren't" : "isn't"} accepted yet, so ${t.pending > 1 ? "they're" : "it's"} left off. ${t.pending > 1 ? 'They' : 'It'} will appear once the status is Accepted.`;
   rosDirty = false;
   $('#rosTitle').textContent = `Run of show: ${stage}, ${fmtDate(day)}`;
   $('#rosPreview').href = `/api/festival-options/${id}/run-of-show.pdf?stage=${encodeURIComponent(stage)}&day=${day}`;
@@ -275,34 +295,34 @@ function openRos(stage, day) {
   $('#rosRows input').focus();
 }
 $('#rosRows').addEventListener('input', (e) => {
-  const tr = e.target.closest('[data-i]'); if (!tr) return;
-  rosEdit.rows[tr.dataset.i][e.target.dataset.k] = e.target.value; rosDirty = true;
+  const tr = e.target.closest('[data-i]'); if (!tr || !e.target.dataset.k) return;
+  const row = rosEdit.rows[tr.dataset.i];
+  row[e.target.dataset.k] = e.target.value; rosDirty = true;
+  // Fill Duration from Start/End unless it was typed by hand.
+  if ((e.target.dataset.k === 'time' || e.target.dataset.k === 'end') && (!row.duration || row._autoDur)) {
+    row.duration = durText(row.time, row.end); row._autoDur = true;
+    tr.querySelector('[data-k="duration"]').value = row.duration;
+  }
+  if (e.target.dataset.k === 'duration') row._autoDur = false;
 });
+// Rows are re-ordered by start time when saved (not while typing).
 $('#rosRows').addEventListener('click', (e) => {
   const tr = e.target.closest('[data-i]'); if (!tr) return;
   const i = Number(tr.dataset.i);
   if (e.target.closest('[data-rm]')) rosEdit.rows.splice(i, 1);
-  else if (e.target.closest('[data-mv]')) {
-    const j = i + Number(e.target.closest('[data-mv]').dataset.mv);
-    if (j < 0 || j >= rosEdit.rows.length) return;
-    [rosEdit.rows[i], rosEdit.rows[j]] = [rosEdit.rows[j], rosEdit.rows[i]];
-  } else return;
+  else return;
   rosDirty = true; renderRosRows();
 });
 $('#rosAddRow').onclick = () => {
-  rosEdit.rows.push({ item: '', setup: '', time: '', duration: '' }); rosDirty = true; renderRosRows();
+  rosEdit.rows.push({ item: '', setup: '', time: '', end: '', duration: '' }); rosDirty = true; renderRosRows();
   $('#rosRows tr:last-child input').focus();
-};
-$('#rosSort').onclick = () => {
-  const key = (r) => /^\d{1,2}:\d{2}$/.test(r.time || '') ? r.time.padStart(5, '0') : '99:99';
-  rosEdit.rows.sort((a, b) => key(a).localeCompare(key(b)));
-  rosDirty = true; renderRosRows();
 };
 $('#rosPreview').addEventListener('click', (e) => { if (rosDirty) { e.preventDefault(); toast('Save first, then preview', true); } });
 $('#rosCancel').onclick = () => { if (!rosDirty || confirm('Discard your changes to this run of show?')) $('#rosDlg').close(); };
 $('#rosSave').onclick = async () => {
   try {
-    const r = await api(`/festival-options/${id}/run-of-show-table`, { method: 'PUT', body: { stage: rosEdit.stage, day: rosEdit.day, rows: rosEdit.rows } });
+    const rows = rosEdit.rows.map(({ _autoDur, ...r }) => r);
+    const r = await api(`/festival-options/${id}/run-of-show-table`, { method: 'PUT', body: { stage: rosEdit.stage, day: rosEdit.day, rows } });
     rosDirty = false; toast(`Run of show saved (${r.count} item${r.count === 1 ? '' : 's'})`);
     await loadRos();
     // Keep the editor open on the saved rows so Preview works right away.
@@ -327,7 +347,8 @@ async function loadRos() {
       const t = ROS_TABLES.find(x => x.stage === s && x.day === d);
       const attrs = `data-stage="${esc(s)}" data-day="${esc(d)}"`;
       const n = t ? t.rows.length : 0;
-      const built = `<div class="ros-built">${n ? `<strong>${n} item${n > 1 ? 's' : ''}</strong> <span class="meta">${esc(t.updated_by_name || '')} · ${fmtStamp(t.updated_at)}</span>` : '<span class="meta">No table yet</span>'}
+      const acts = t ? t.rows.filter(r => r.offer_id).length : 0;
+      const built = `<div class="ros-built">${n ? `<strong>${n} item${n > 1 ? 's' : ''}</strong>${acts ? ` · ${acts} act${acts > 1 ? 's' : ''}` : ''} <span class="meta">${t.updated_by_name ? `edited by ${esc(t.updated_by_name)} · ${fmtStamp(t.updated_at)}` : 'auto-filled'}${t.pending ? ` · ${t.pending} not accepted yet` : ''}</span>` : `<span class="meta">No rows yet${t && t.pending ? ` · ${t.pending} not accepted yet` : ''}</span>`}
           <div class="btn-row"><button type="button" class="btn sm" data-edit ${attrs}>${n ? 'Edit' : 'Build'} run of show</button></div></div>`;
       const ignored = n && r ? '<span class="meta">(not sent: the table is used)</span>' : '';
       return `<td>${built}${r ? `<div class="ros-file">${ignored}${/^(application\/pdf|image\/(png|jpeg))$/.test(r.mime_type) ? `<a target="_blank" href="/api/festival-files/${r.id}/download?view=1">${esc(r.original_name)}</a>` : esc(r.original_name)}
