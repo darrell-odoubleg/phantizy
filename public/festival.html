@@ -88,7 +88,10 @@ const id = Number(new URLSearchParams(location.search).get('id'));
 // The festival-wide sections of the offer sheet, minus the festival name itself.
 const SECTIONS = PF.OFFER_SECTIONS.filter(s => s.festivalWide)
   .map(s => ({ ...s, fields: s.fields.filter(f => f.key !== 'festival_name' && !f.internal) }))
-  .filter(s => s.fields.length);
+  .filter(s => s.fields.length)
+  // Day-of contacts that fill blank ones on every advance sheet.
+  .concat(PF.ADVANCE_SECTIONS.filter(s => s.fields.some(f => f.festivalDefault))
+    .map(s => ({ ...s, title: `Advance ${s.title.toLowerCase()} (filled on every advance sheet)`, fields: s.fields.filter(f => f.festivalDefault) })));
 let dirty = false;
 
 $('#form').addEventListener('input', () => { dirty = true; $('#msg').innerHTML = 'Unsaved changes<span class="dirty-dot"></span>'; });
