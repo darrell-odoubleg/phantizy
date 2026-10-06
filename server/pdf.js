@@ -333,11 +333,9 @@ function runOfShowPdf({ festival, stage, day, rows, highlight, highlightOfferId 
   let y = doc.page.margins.top;
   const logo = fest && fs.existsSync(fest.logo) ? fest.logo : fs.existsSync(LOGO_PATH) ? LOGO_PATH : null;
   if (logo) {
-    // Gray box the size of the logo, so its white lettering shows.
     const img = doc.openImage(logo);
     const h = 130, w = Math.min(width, img.width * h / img.height);
     const x = left + (width - w) / 2;
-    if (fest) doc.rect(x, y, w, h).fill('#5A5A5A');
     doc.image(img, x, y, { width: w, height: h });
     y += h + 10;
   }
